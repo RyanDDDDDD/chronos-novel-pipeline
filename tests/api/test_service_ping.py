@@ -244,3 +244,62 @@ async def test_ping_search_provider_raises(monkeypatch):
     result = await ping_search({"api": {"tavily_api_key": "k"}})
     assert result["ok"] is False
     assert "超时" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_ping_search_free_tavily_uses_usage_endpoint_not_search(monkeypatch):
+    """Free check must never construct a real SearchProvider / call .search() --
+    only Tavily's own /usage endpoint."""
+    from api.services.service_ping import ping_search_free
+
+    seen_urls = []
+
+    def handler(url, timeout=None, headers=None):
+        seen_urls.append(url)
+        assert headers == {"Authorization": "Bearer k"}
+        return _FakeResp()
+
+    def _boom(cfg):
+        raise AssertionError("ping_search_free must not build a real search provider")
+
+    monkeypatch.setattr("httpx.AsyncClient", _fake_async_client(handler))
+    monkeypatch.setattr("domain.search_provider.build_search_provider", _boom)
+
+    result = await ping_search_free({"api": {"search_provider": "tavily", "tavily_api_key": "k"}})
+    assert result == {"ok": True, "error": None}
+    assert seen_urls == ["https://api.tavily.com/usage"]
+
+
+@pytest.mark.asyncio
+async def test_ping_search_free_tavily_missing_key(monkeypatch):
+    from api.services.service_ping import ping_search_free
+
+    result = await ping_search_free({"api": {"search_provider": "tavily"}})
+    assert result == {"ok": False, "error": "未配置 Tavily key"}
+
+
+@pytest.mark.asyncio
+async def test_ping_search_free_tavily_usage_endpoint_error(monkeypatch):
+    from api.services.service_ping import ping_search_free
+
+    monkeypatch.setattr(
+        "httpx.AsyncClient", _fake_async_client(lambda url, timeout=None, headers=None: _FakeResp(status_code=401)),
+    )
+    result = await ping_search_free({"api": {"search_provider": "tavily", "tavily_api_key": "bad"}})
+    assert result["ok"] is False
+    assert result["error"]
+
+
+@pytest.mark.asyncio
+async def test_ping_search_free_baidu_qianfan_returns_none(monkeypatch):
+    """No free introspection endpoint exists for Baidu Qianfan's AI Search
+    product -- ping_search_free must not spend real quota automatically, so
+    it returns None (caller renders this as "disabled")."""
+    from api.services.service_ping import ping_search_free
+
+    def _boom(*a, **k):
+        raise AssertionError("must not make any network call for baidu_qianfan")
+
+    monkeypatch.setattr("httpx.AsyncClient", _boom)
+    result = await ping_search_free({"api": {"search_provider": "baidu_qianfan", "qianfan_api_key": "k"}})
+    assert result is None

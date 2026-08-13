@@ -61,17 +61,28 @@ async def run_ping_search(cfg: dict) -> dict:
     return _apply_ping_result("search", await ping_search(cfg))
 
 
-async def run_startup_pings(cfg: dict) -> None:
-    """LLM always; search only when api.search_ping_enabled (startup gate)."""
-    await run_ping_llm(cfg)
-    api_cfg = cfg.get("api") or {}
-    if api_cfg.get("search_ping_enabled"):
-        await run_ping_search(cfg)
+async def _run_free_search_ping(cfg: dict) -> None:
+    from api.services.service_ping import ping_search_free
+
+    _set_entry("search", "checking", None)
+    result = await ping_search_free(cfg)
+    if result is None:
+        _set_entry("search", "disabled", "当前检索服务商无免费连通性检测接口，如需验证请手动测试")
     else:
-        _set_entry("search", "disabled", None)
+        _apply_ping_result("search", result)
+
+
+async def run_startup_pings(cfg: dict) -> None:
+    """Both LLM and search always -- search via the free check (see
+    ping_search_free), so startup never spends real quota on its own. No
+    opt-in gate needed now that the automatic path can't cost anything."""
+    await run_ping_llm(cfg)
+    await _run_free_search_ping(cfg)
 
 
 async def run_config_save_pings(cfg: dict) -> None:
-    """Always re-check both providers after a config save (manual ping)."""
+    """Always re-check LLM; search re-checked via the free path only (see
+    run_startup_pings) -- config saves happen often enough during normal use
+    that spending real search quota on every save isn't acceptable."""
     await run_ping_llm(cfg)
-    await run_ping_search(cfg)
+    await _run_free_search_ping(cfg)

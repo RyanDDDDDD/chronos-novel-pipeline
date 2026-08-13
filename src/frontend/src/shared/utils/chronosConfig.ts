@@ -42,7 +42,6 @@ export type ChronosConfig = {
     qianfan_api_key?: string
     search_provider?: 'tavily' | 'baidu_qianfan'
     search_top_k?: number
-    search_ping_enabled?: boolean
   }
   paths?: {
     chapters_dir?: string
