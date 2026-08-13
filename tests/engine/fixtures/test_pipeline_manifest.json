@@ -1,0 +1,13 @@
+{
+  "_comment": "冻结的测试参考 manifest——供无 live pipeline 时的引擎测试使用。仅含结构节点(start/strip)；hooks/packages/ 已无真实接线 agent 包可引用（最后一个 dialogue_design 已删除，末路径改走 dialogue_mode 的 LangGraph 图）。",
+  "nodes": {
+    "start": {
+      "type": "start"
+    },
+    "strip": {
+      "type": "strip",
+      "inputs": ["start"]
+    }
+  },
+  "name": "test-fixture"
+}

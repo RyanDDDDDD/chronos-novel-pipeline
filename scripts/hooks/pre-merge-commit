@@ -1,0 +1,40 @@
+#!/bin/sh
+# Git pre-merge-commit hook - 全量回归测试
+#
+# 版本管理的 hook：通过 `git config core.hooksPath scripts/hooks` 启用
+# （见 scripts/hooks/install.sh）。修改此文件即修改全仓的合并门禁。
+#
+# `git merge`（非 fast-forward，真正要生成合并提交时）在写入合并提交前触发。
+# commit 门禁（scripts/hooks/pre-commit）不再跑 pytest（见该文件注释）；
+# 全量 `pytest tests/` 挪到这里 + pre-push 两个真正的集成关口兜底，merge
+# 进目标分支前必须全绿，坏改动不会带着 dev 一起往前走。
+
+echo "=================================================="
+echo "🚀 [Git Pre-merge-commit Hook] 开始执行全量回归测试..."
+echo "=================================================="
+
+if [ -f "./.venv/Scripts/pytest.exe" ]; then
+    PYTEST_CMD="./.venv/Scripts/pytest.exe"
+elif [ -f "./.venv/bin/pytest" ]; then
+    PYTEST_CMD="./.venv/bin/pytest"
+else
+    PYTEST_CMD="pytest"
+fi
+
+echo "使用命令: $PYTEST_CMD tests/"
+$PYTEST_CMD tests/
+
+RESULT=$?
+
+if [ $RESULT -ne 0 ]; then
+    echo ""
+    echo "❌ 全量测试未通过！合并已中断。"
+    echo "请修复错误后再尝试 merge。"
+    echo "=================================================="
+    exit 1
+fi
+
+echo ""
+echo "✅ 全量回归测试通过。允许合并。"
+echo "=================================================="
+exit 0

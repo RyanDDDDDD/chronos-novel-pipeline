@@ -1,0 +1,111 @@
+# Chronos · Claude 上下文排除（gitignore 语法）
+# 目的：少索引运行时产物/密钥/大二进制，省 token、降误读风险。
+# 与 .gitignore 独立：此处只管 Claude 是否读，不影响 git。
+
+# ── 密钥与本地配置（含 API Key）────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+config/config.json
+config/pipelines/
+config/pipeline_manifest.json
+config/pipeline_layout.json
+*.pem
+*.key
+*credentials*
+secrets/
+
+# ── 运行时创作数据（per-novel lore/plot/chapters/timeline）────────────────
+data/
+chapters/
+workspace/
+var/
+
+# ── 数据库 / Checkpoint / 向量库 ───────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+**/checkpoint.sqlite
+**/_author_loop_graph.sqlite
+**/rag/
+**/chroma*/
+**/chroma.sqlite3
+
+# ── 日志与调试产物 ─────────────────────────────────────────────────────────
+logs/
+*.log
+*.ndjson
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Python 环境与缓存 ──────────────────────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pycache_global/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# ── Node / 前端构建产物 ────────────────────────────────────────────────────
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+dist-ssr/
+.vite/
+**/.vite/
+*.tsbuildinfo
+.turbo/
+.parcel-cache/
+
+# ── IDE / 编辑器 / 本地工具状态 ────────────────────────────────────────────
+.claude/
+.vs/
+.vscode/
+!.vscode/extensions.json
+.gemini/
+.idea/
+.project_memory/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ── Git worktree / superpowers 临时态 ──────────────────────────────────────
+.worktrees/
+.superpowers/
+
+# ── 自动生成的文档（非手写 spec/plan）──────────────────────────────────────
+docs/generated/
+
+# ── 大二进制 / 媒体（对读代码无帮助）────────────────────────────────────────
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.rar
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.ico
+*.mp3
+*.mp4
+*.wav

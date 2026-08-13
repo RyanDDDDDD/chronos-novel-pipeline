@@ -1,0 +1,55 @@
+{
+  "_note": "本地模型 API 生成参数预设。切换预设只需修改 config.json 中 llm.local_preset 的值（A/B/C/D/E）。",
+  "presets": {
+    "A": {
+      "description": "稳定输出（通用默认）",
+      "use_case": "大多数分段的默认配置，对话+动作+描写的平衡点",
+      "temperature": 0.80,
+      "top_p": 0.92,
+      "top_k": 50,
+      "repetition_penalty": 1.12,
+      "repeat_last_n": 2048,
+      "min_p": 0.05
+    },
+    "B": {
+      "description": "感官密度优先",
+      "use_case": "环境渲染段、感官/动作高强度场景——需要词汇丰富度和新鲜比喻时使用",
+      "temperature": 0.90,
+      "top_p": 0.94,
+      "top_k": 65,
+      "repetition_penalty": 1.14,
+      "repeat_last_n": 2048,
+      "min_p": 0.06
+    },
+    "C": {
+      "description": "对话与多人场景",
+      "use_case": "两个角色交替说话、公开场合压抑对话——需要逻辑连贯和角色语气一致的场景",
+      "temperature": 0.75,
+      "top_p": 0.88,
+      "top_k": 40,
+      "repetition_penalty": 1.10,
+      "repeat_last_n": 2048,
+      "min_p": 0.04
+    },
+    "D": {
+      "description": "抗复读强化",
+      "use_case": "已发现上一段输出有明显复读时使用，跑完本段后切回 A",
+      "temperature": 0.85,
+      "top_p": 0.90,
+      "top_k": 45,
+      "repetition_penalty": 1.18,
+      "repeat_last_n": 1536,
+      "min_p": 0.07
+    },
+    "E": {
+      "description": "极长段落（输入 > 2500 字）",
+      "use_case": "分段指引里某段落特别长，需要更大回看窗口防止后段复读前段",
+      "temperature": 0.82,
+      "top_p": 0.91,
+      "top_k": 50,
+      "repetition_penalty": 1.13,
+      "repeat_last_n": 3072,
+      "min_p": 0.05
+    }
+  }
+}

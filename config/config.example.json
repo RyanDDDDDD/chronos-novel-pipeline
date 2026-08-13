@@ -1,0 +1,40 @@
+{
+  "llm": {
+    "cloud_model_id": "claude-opus-4-7",
+    "custom_cloud": {
+      "model": "",
+      "base_url": "",
+      "provider": "openai_compatible",
+      "client_kwargs": {}
+    },
+    "local_base_url": "http://localhost:1234/v1",
+    "local_model": "local-model",
+    "max_tokens": 8000,
+    "local_max_tokens": 8000,
+    "local_preset": "A",
+    "max_concurrency": 32,
+    "parallel_segments": true
+  },
+  "api": {
+    "model_api_keys": {},
+    "tavily_api_key": "",
+    "qianfan_api_key": "",
+    "search_provider": "tavily",
+    "search_top_k": 5,
+    "search_ping_enabled": false
+  },
+  "server": {
+    "engine_port": 8776
+  },
+  "novel_import": {
+    "chunk_size": 10000,
+    "concurrency": null,
+    "warn_threshold_chars": 100000,
+    "compaction_interval": 5,
+    "image_batch_size": 10,
+    "image_batch_overlap": 2
+  },
+  "novels": {
+    "trash_retention_days": 30
+  }
+}

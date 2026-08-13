@@ -1,0 +1,55 @@
+#!/bin/sh
+# Git post-checkout hook - 新 worktree 首次 checkout 时自动补齐被 gitignore 的 config/
+#
+# 版本管理的 hook：与 scripts/hooks/pre-commit 同一套机制（见 scripts/hooks/install.sh）。
+# config/config.json 与 config/pipelines/ 已 gitignore（用户自由改的 live 配置），全新 worktree
+# 天然没有这两样，导致 pre-commit 校验 / pytest 因读不到 config 而失败。此钩子只在"当前
+# 是 linked worktree 且缺文件"时从主 worktree 补齐一份拷贝；对主仓库自身、以及普通分支切换
+# （非 worktree 创建）是纯 no-op。
+#
+# 只补 config/（几十 KB，秒级）——不碰 data/（几 GB，含真实小说内容），避免每次建 worktree
+# 都拷贝大量数据；真需要真实小说数据时手动拷贝对应 data/novels/<id>，或用 CHRONOS_NOVELS_DIR
+# 指回主仓库。
+
+branch_checkout=$3
+
+# 单文件级 checkout（如 git checkout -- file）不触发，只处理分支/worktree 级 checkout
+if [ "$branch_checkout" != "1" ]; then
+    exit 0
+fi
+
+git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null)
+common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+
+# 主 worktree：git-dir 与 common-dir 相同，不是 linked worktree，跳过
+if [ -z "$git_dir" ] || [ -z "$common_dir" ] || [ "$git_dir" = "$common_dir" ]; then
+    exit 0
+fi
+
+worktree_root=$(git rev-parse --show-toplevel 2>/dev/null)
+main_root=$(dirname "$common_dir")
+
+[ -z "$worktree_root" ] && exit 0
+[ "$worktree_root" = "$main_root" ] && exit 0
+
+copied=0
+
+if [ ! -f "$worktree_root/config/config.json" ] && [ -f "$main_root/config/config.json" ]; then
+    mkdir -p "$worktree_root/config"
+    cp "$main_root/config/config.json" "$worktree_root/config/config.json"
+    copied=1
+fi
+
+if [ ! -d "$worktree_root/config/pipelines" ] && [ -d "$main_root/config/pipelines" ]; then
+    mkdir -p "$worktree_root/config"
+    cp -r "$main_root/config/pipelines" "$worktree_root/config/pipelines"
+    copied=1
+fi
+
+if [ "$copied" = "1" ]; then
+    echo "=================================================="
+    echo "🚀 [Git Post-checkout Hook] 已从主仓库补齐 config/config.json + config/pipelines/"
+    echo "=================================================="
+fi
+
+exit 0

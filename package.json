@@ -1,0 +1,13 @@
+{
+  "name": "chronos",
+  "private": true,
+  "scripts": {
+    "dev": "uv run python run.py --sequenced --no-browser",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4"
+  }
+}

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>启动失败</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #0f1115;
+      color: #e6e6e6;
+      font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    .wrap {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 600;
+      margin: 0 0 12px;
+    }
+    p {
+      font-size: 14px;
+      color: #a3a3a3;
+      margin: 4px 0;
+      line-height: 1.6;
+    }
+    .countdown {
+      margin-top: 20px;
+      font-size: 13px;
+      color: #6b6b6b;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>后端没有正常启动</h1>
+    <p>本地服务在 15 秒内未能就绪，应用无法继续加载。</p>
+    <p>请重新启动应用；若反复出现，请查看日志目录下的 server.log。</p>
+    <p class="countdown" id="countdown"></p>
+  </div>
+  <script src="error.js"></script>
+</body>
+</html>

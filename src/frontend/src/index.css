@@ -1,0 +1,728 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* 中文优先，避免 Segoe UI 缺字时逐字回退导致字重不一 */
+  --font-sans:
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "Source Han Sans SC",
+    "Noto Sans SC",
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+
+  /* 等宽场景若出现中文，仍落回同一套黑体 */
+  --font-mono:
+    ui-monospace,
+    "Cascadia Code",
+    "Cascadia Mono",
+    "SF Mono",
+    Consolas,
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    monospace;
+
+  /* 常见中文黑体只有 400/700；600 会触发合成粗体且逐字不一致 */
+  --font-weight-semibold: 700;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* scroll-fade-x -- used by ui/attachment.tsx's AttachmentGroup for the horizontal-scroll edge
+   fade. Ported verbatim from the `shadcn` npm package's shipped tailwind.css (this project
+   doesn't depend on that package, only individual components via the CLI, so this utility --
+   unlike `scrollbar-none`, which is a native Tailwind v4 utility already -- isn't available
+   unless copied in manually). Only the -x variant is included since nothing in this project
+   uses scroll-fade/-y/-t/-b yet; add those verbatim from the same source if a future component
+   needs them. */
+@property --scroll-fade-s {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --scroll-fade-e {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --scroll-fade-mask {
+  syntax: "*";
+  inherits: false;
+}
+
+@theme inline {
+  @keyframes scroll-fade-reveal-s {
+    from {
+      --scroll-fade-s: 0px;
+    }
+    to {
+      --scroll-fade-s: var(--_scroll-fade-size-s, var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10))));
+    }
+  }
+  @keyframes scroll-fade-reveal-e {
+    from {
+      --scroll-fade-e: var(--_scroll-fade-size-e, var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10))));
+    }
+    to {
+      --scroll-fade-e: 0px;
+    }
+  }
+}
+
+@utility scroll-fade-x {
+  --_scroll-fade-size-s: var(
+    --scroll-fade-s-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --_scroll-fade-size-e: var(
+    --scroll-fade-e-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --scroll-fade-inline: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--scroll-fade-s, 0px),
+    #000 calc(100% - var(--scroll-fade-e, 0px)),
+    transparent 100%
+  );
+  &:where([dir="rtl"], [dir="rtl"] *) {
+    --scroll-fade-inline: linear-gradient(
+      to left,
+      transparent 0,
+      #000 var(--scroll-fade-s, 0px),
+      #000 calc(100% - var(--scroll-fade-e, 0px)),
+      transparent 100%
+    );
+  }
+  -webkit-mask-image: var(--scroll-fade-mask, var(--scroll-fade-inline));
+  mask-image: var(--scroll-fade-mask, var(--scroll-fade-inline));
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  @supports (animation-timeline: scroll()) {
+    animation:
+      scroll-fade-reveal-s 1ms ease-in-out,
+      scroll-fade-reveal-e 1ms ease-in-out;
+    animation-timeline: scroll(self inline), scroll(self inline);
+    animation-range:
+      0 var(--scroll-fade-reveal, calc(var(--spacing) * 24)),
+      calc(100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))) 100%;
+    animation-fill-mode: both;
+  }
+
+  @supports not (animation-timeline: scroll()) {
+    --scroll-fade-s: var(--_scroll-fade-size-s);
+    --scroll-fade-e: var(--_scroll-fade-size-e);
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --reading-font-size: 14px;
+    --c-bg-app: #faf9f5;
+    --c-surface: #ffffff;
+    --c-surface-muted: #ede9de;
+    --c-surface-hover: color-mix(in srgb, var(--c-surface-muted) 55%, var(--c-border));
+    --c-border: #dad9d4;
+    --c-border-subtle: color-mix(in srgb, var(--c-border) 45%, var(--c-surface));
+    --c-text: #3d3929;
+    --c-text-secondary: color-mix(in srgb, #3d3929 75%, #83827d);
+    --c-text-muted: #83827d;
+    --c-text-faint: color-mix(in srgb, #83827d 60%, #faf9f5);
+    --c-text-dim: color-mix(in srgb, #83827d 30%, #faf9f5);
+    --c-chat-scroll-jump-bg: var(--c-surface);
+    --c-chat-scroll-jump-text: var(--c-text);
+    --c-chat-scroll-jump-border: var(--c-text-dim);
+    --c-chat-scroll-jump-hover: var(--c-surface-hover);
+    --c-chat-scroll-jump-shadow: 0 4px 14px rgb(61 57 41 / 0.14);
+    --c-accent: #c96442;
+    --c-accent-hover: color-mix(in srgb, #c96442 85%, black);
+    --c-accent-subtle: color-mix(in srgb, #c96442 14%, var(--c-surface-muted));
+    --c-accent-text: #ffffff;
+    --c-focus-ring: rgb(201 100 66 / 0.35);
+    --c-tag-violet-bg: color-mix(in srgb, #8b5cf6 14%, var(--c-surface-muted));
+    --c-tag-violet-text: color-mix(in srgb, #8b5cf6 85%, black);
+    --c-tag-violet-border: color-mix(in srgb, #8b5cf6 28%, var(--c-border));
+    --background: var(--c-bg-app);
+    --foreground: var(--c-text);
+    --card: var(--c-surface);
+    --card-foreground: var(--c-text);
+    --popover: var(--c-surface);
+    --popover-foreground: var(--c-text);
+    --primary: var(--c-accent);
+    --primary-foreground: var(--c-accent-text);
+    --secondary: var(--c-surface-muted);
+    --secondary-foreground: var(--c-text);
+    --muted: var(--c-surface-muted);
+    --muted-foreground: var(--c-text-muted);
+    --accent: var(--c-surface-hover);
+    --accent-foreground: var(--c-text);
+    --border: var(--c-border);
+    --input: var(--c-border);
+    --ring: var(--c-focus-ring);
+    --destructive: #dc2626;
+    --destructive-foreground: #ffffff;
+    --radius: 0.5rem;
+    --sidebar: var(--c-surface);
+    --sidebar-foreground: var(--c-text);
+    --sidebar-primary: var(--c-accent);
+    --sidebar-primary-foreground: var(--c-accent-text);
+    --sidebar-accent: var(--c-surface-hover);
+    --sidebar-accent-foreground: var(--c-text);
+    --sidebar-border: var(--c-border);
+    --sidebar-ring: var(--c-focus-ring);
+  }
+
+  .theme-sepia {
+    color-scheme: light;
+    --c-bg-app: #f5f1e6;
+    --c-surface: #fffcf5;
+    --c-surface-muted: #ece5d8;
+    --c-surface-hover: color-mix(in srgb, var(--c-surface-muted) 55%, var(--c-border));
+    --c-border: #dbd0ba;
+    --c-border-subtle: color-mix(in srgb, var(--c-border) 45%, var(--c-surface));
+    --c-text: #4a3f35;
+    --c-text-secondary: color-mix(in srgb, #4a3f35 75%, #7d6b56);
+    --c-text-muted: #7d6b56;
+    --c-text-faint: color-mix(in srgb, #7d6b56 60%, #f5f1e6);
+    --c-text-dim: color-mix(in srgb, #7d6b56 30%, #f5f1e6);
+    --c-chat-scroll-jump-bg: var(--c-surface);
+    --c-chat-scroll-jump-text: var(--c-text);
+    --c-chat-scroll-jump-border: var(--c-text-dim);
+    --c-chat-scroll-jump-hover: var(--c-surface-hover);
+    --c-chat-scroll-jump-shadow: 0 4px 14px rgb(74 63 53 / 0.14);
+    --c-accent: #a67c52;
+    --c-accent-hover: color-mix(in srgb, #a67c52 85%, black);
+    --c-accent-subtle: color-mix(in srgb, #a67c52 14%, var(--c-surface-muted));
+    --c-accent-text: #ffffff;
+    --c-focus-ring: rgb(166 124 82 / 0.35);
+    --c-tag-violet-bg: color-mix(in srgb, #8b5cf6 14%, var(--c-surface-muted));
+    --c-tag-violet-text: color-mix(in srgb, #8b5cf6 85%, black);
+    --c-tag-violet-border: color-mix(in srgb, #8b5cf6 28%, var(--c-border));
+    --background: var(--c-bg-app);
+    --foreground: var(--c-text);
+    --card: var(--c-surface);
+    --card-foreground: var(--c-text);
+    --popover: var(--c-surface);
+    --popover-foreground: var(--c-text);
+    --primary: var(--c-accent);
+    --primary-foreground: var(--c-accent-text);
+    --secondary: var(--c-surface-muted);
+    --secondary-foreground: var(--c-text);
+    --muted: var(--c-surface-muted);
+    --muted-foreground: var(--c-text-muted);
+    --accent: var(--c-surface-hover);
+    --accent-foreground: var(--c-text);
+    --border: var(--c-border);
+    --input: var(--c-border);
+    --ring: var(--c-focus-ring);
+    --destructive: #dc2626;
+    --destructive-foreground: #ffffff;
+    --radius: 0.5rem;
+  }
+
+  .theme-dark {
+    color-scheme: dark;
+    --c-bg-app: #262624;
+    --c-surface: color-mix(in srgb, #262624 94%, white);
+    --c-surface-muted: #1b1b19;
+    --c-surface-hover: color-mix(in srgb, var(--c-surface-muted) 55%, var(--c-border));
+    --c-border: #3e3e38;
+    --c-border-subtle: color-mix(in srgb, var(--c-border) 45%, var(--c-surface));
+    --c-text: #c3c0b6;
+    --c-text-secondary: color-mix(in srgb, #c3c0b6 75%, #b7b5a9);
+    --c-text-muted: #b7b5a9;
+    --c-text-faint: color-mix(in srgb, #b7b5a9 60%, #262624);
+    --c-text-dim: color-mix(in srgb, #b7b5a9 30%, #262624);
+    --c-chat-scroll-jump-bg: var(--c-text);
+    --c-chat-scroll-jump-text: var(--c-bg-app);
+    --c-chat-scroll-jump-border: var(--c-text-faint);
+    --c-chat-scroll-jump-hover: color-mix(in srgb, var(--c-chat-scroll-jump-bg) 92%, black);
+    --c-chat-scroll-jump-shadow: 0 4px 18px rgb(0 0 0 / 0.55);
+    --c-accent: #d97757;
+    --c-accent-hover: color-mix(in srgb, #d97757 85%, white);
+    --c-accent-subtle: color-mix(in srgb, #d97757 18%, var(--c-surface-muted));
+    --c-accent-text: #ffffff;
+    --c-focus-ring: rgb(217 119 87 / 0.42);
+    --c-tag-violet-bg: color-mix(in srgb, #8b5cf6 20%, var(--c-surface-muted));
+    --c-tag-violet-text: color-mix(in srgb, #8b5cf6 80%, white);
+    --c-tag-violet-border: color-mix(in srgb, #8b5cf6 32%, var(--c-border));
+    --background: var(--c-bg-app);
+    --foreground: var(--c-text);
+    --card: var(--c-surface);
+    --card-foreground: var(--c-text);
+    --popover: var(--c-surface);
+    --popover-foreground: var(--c-text);
+    --primary: var(--c-accent);
+    --primary-foreground: var(--c-accent-text);
+    --secondary: var(--c-surface-muted);
+    --secondary-foreground: var(--c-text);
+    --muted: var(--c-surface-muted);
+    --muted-foreground: var(--c-text-muted);
+    --accent: var(--c-surface-hover);
+    --accent-foreground: var(--c-text);
+    --border: var(--c-border);
+    --input: var(--c-border);
+    --ring: var(--c-focus-ring);
+    --destructive: #f87171;
+    --destructive-foreground: #ffffff;
+    --radius: 0.5rem;
+  }
+
+  .theme-solarized-light {
+    color-scheme: light;
+    --c-bg-app: #eff1f5;
+    --c-surface: #ffffff;
+    --c-surface-muted: #dce0e8;
+    --c-surface-hover: color-mix(in srgb, var(--c-surface-muted) 55%, var(--c-border));
+    --c-border: #bcc0cc;
+    --c-border-subtle: color-mix(in srgb, var(--c-border) 45%, var(--c-surface));
+    --c-text: #4c4f69;
+    --c-text-secondary: color-mix(in srgb, #4c4f69 75%, #6c6f85);
+    --c-text-muted: #6c6f85;
+    --c-text-faint: color-mix(in srgb, #6c6f85 60%, #eff1f5);
+    --c-text-dim: color-mix(in srgb, #6c6f85 30%, #eff1f5);
+    --c-chat-scroll-jump-bg: var(--c-surface);
+    --c-chat-scroll-jump-text: var(--c-text);
+    --c-chat-scroll-jump-border: var(--c-text-dim);
+    --c-chat-scroll-jump-hover: var(--c-surface-hover);
+    --c-chat-scroll-jump-shadow: 0 4px 14px rgb(76 79 105 / 0.14);
+    --c-accent: #8839ef;
+    --c-accent-hover: color-mix(in srgb, #8839ef 85%, black);
+    --c-accent-subtle: color-mix(in srgb, #8839ef 14%, var(--c-surface-muted));
+    --c-accent-text: #ffffff;
+    --c-focus-ring: rgb(136 57 239 / 0.35);
+    --c-tag-violet-bg: color-mix(in srgb, #8839ef 14%, var(--c-surface-muted));
+    --c-tag-violet-text: color-mix(in srgb, #8839ef 85%, black);
+    --c-tag-violet-border: color-mix(in srgb, #8839ef 28%, var(--c-border));
+    --background: var(--c-bg-app);
+    --foreground: var(--c-text);
+    --card: var(--c-surface);
+    --card-foreground: var(--c-text);
+    --popover: var(--c-surface);
+    --popover-foreground: var(--c-text);
+    --primary: var(--c-accent);
+    --primary-foreground: var(--c-accent-text);
+    --secondary: var(--c-surface-muted);
+    --secondary-foreground: var(--c-text);
+    --muted: var(--c-surface-muted);
+    --muted-foreground: var(--c-text-muted);
+    --accent: var(--c-surface-hover);
+    --accent-foreground: var(--c-text);
+    --border: var(--c-border);
+    --input: var(--c-border);
+    --ring: var(--c-focus-ring);
+    --destructive: #dc2626;
+    --destructive-foreground: #ffffff;
+    --radius: 0.5rem;
+  }
+
+  .theme-solarized-dark {
+    color-scheme: dark;
+    --c-bg-app: #181825;
+    --c-surface: #1e1e2e;
+    --c-surface-muted: #292c3c;
+    --c-surface-hover: color-mix(in srgb, var(--c-surface-muted) 55%, var(--c-border));
+    --c-border: #313244;
+    --c-border-subtle: color-mix(in srgb, var(--c-border) 45%, var(--c-surface));
+    --c-text: #cdd6f4;
+    --c-text-secondary: color-mix(in srgb, #cdd6f4 75%, #a6adc8);
+    --c-text-muted: #a6adc8;
+    --c-text-faint: color-mix(in srgb, #a6adc8 60%, #181825);
+    --c-text-dim: color-mix(in srgb, #a6adc8 30%, #181825);
+    --c-chat-scroll-jump-bg: var(--c-text);
+    --c-chat-scroll-jump-text: var(--c-bg-app);
+    --c-chat-scroll-jump-border: var(--c-text-faint);
+    --c-chat-scroll-jump-hover: color-mix(in srgb, var(--c-chat-scroll-jump-bg) 92%, black);
+    --c-chat-scroll-jump-shadow: 0 4px 18px rgb(0 0 0 / 0.55);
+    --c-accent: #cba6f7;
+    --c-accent-hover: color-mix(in srgb, #cba6f7 85%, white);
+    --c-accent-subtle: color-mix(in srgb, #cba6f7 18%, var(--c-surface-muted));
+    --c-accent-text: #1e1e2e;
+    --c-focus-ring: rgb(203 166 247 / 0.42);
+    --c-tag-violet-bg: color-mix(in srgb, #cba6f7 20%, var(--c-surface-muted));
+    --c-tag-violet-text: color-mix(in srgb, #cba6f7 80%, white);
+    --c-tag-violet-border: color-mix(in srgb, #cba6f7 32%, var(--c-border));
+    --background: var(--c-bg-app);
+    --foreground: var(--c-text);
+    --card: var(--c-surface);
+    --card-foreground: var(--c-text);
+    --popover: var(--c-surface);
+    --popover-foreground: var(--c-text);
+    --primary: var(--c-accent);
+    --primary-foreground: var(--c-accent-text);
+    --secondary: var(--c-surface-muted);
+    --secondary-foreground: var(--c-text);
+    --muted: var(--c-surface-muted);
+    --muted-foreground: var(--c-text-muted);
+    --accent: var(--c-surface-hover);
+    --accent-foreground: var(--c-text);
+    --border: var(--c-border);
+    --input: var(--c-border);
+    --ring: var(--c-focus-ring);
+    --destructive: #f87171;
+    --destructive-foreground: #ffffff;
+    --radius: 0.5rem;
+  }
+
+  .theme-dracula {
+    color-scheme: dark;
+    --c-bg-app: #2d2521;
+    --c-surface: #3c332e;
+    --c-surface-muted: #56453f;
+    --c-surface-hover: color-mix(in srgb, var(--c-surface-muted) 55%, var(--c-border));
+    --c-border: #56453f;
+    --c-border-subtle: color-mix(in srgb, var(--c-border) 45%, var(--c-surface));
+    --c-text: #f1f0e5;
+    --c-text-secondary: color-mix(in srgb, #f1f0e5 75%, #c5aa9b);
+    --c-text-muted: #c5aa9b;
+    --c-text-faint: color-mix(in srgb, #c5aa9b 60%, #2d2521);
+    --c-text-dim: color-mix(in srgb, #c5aa9b 30%, #2d2521);
+    --c-chat-scroll-jump-bg: var(--c-text);
+    --c-chat-scroll-jump-text: var(--c-bg-app);
+    --c-chat-scroll-jump-border: var(--c-text-faint);
+    --c-chat-scroll-jump-hover: color-mix(in srgb, var(--c-chat-scroll-jump-bg) 92%, black);
+    --c-chat-scroll-jump-shadow: 0 4px 18px rgb(0 0 0 / 0.55);
+    --c-accent: #c39e88;
+    --c-accent-hover: color-mix(in srgb, #c39e88 85%, white);
+    --c-accent-subtle: color-mix(in srgb, #c39e88 18%, var(--c-surface-muted));
+    --c-accent-text: #2d2521;
+    --c-focus-ring: rgb(195 158 136 / 0.42);
+    --c-tag-violet-bg: color-mix(in srgb, #8b5cf6 20%, var(--c-surface-muted));
+    --c-tag-violet-text: color-mix(in srgb, #8b5cf6 80%, white);
+    --c-tag-violet-border: color-mix(in srgb, #8b5cf6 32%, var(--c-border));
+    --background: var(--c-bg-app);
+    --foreground: var(--c-text);
+    --card: var(--c-surface);
+    --card-foreground: var(--c-text);
+    --popover: var(--c-surface);
+    --popover-foreground: var(--c-text);
+    --primary: var(--c-accent);
+    --primary-foreground: var(--c-accent-text);
+    --secondary: var(--c-surface-muted);
+    --secondary-foreground: var(--c-text);
+    --muted: var(--c-surface-muted);
+    --muted-foreground: var(--c-text-muted);
+    --accent: var(--c-surface-hover);
+    --accent-foreground: var(--c-text);
+    --border: var(--c-border);
+    --input: var(--c-border);
+    --ring: var(--c-focus-ring);
+    --destructive: #f87171;
+    --destructive-foreground: #ffffff;
+    --radius: 0.5rem;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--c-focus-ring);
+    outline-offset: 1px;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scrollbar-width: thin;
+    scrollbar-color: var(--c-text-dim) transparent;
+  }
+
+  /* 全局滚动条：轨道透明,滑块常驻可见跟随主题;.scrollbar-hidden 靠类选择器优先级覆盖此规则保持完全隐藏 */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--c-text-dim);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    cursor: pointer;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--c-text-faint);
+  }
+
+  body {
+    margin: 0;
+    background: var(--c-bg-app);
+    color: var(--c-text);
+  }
+
+  button,
+  input,
+  select,
+  textarea,
+  optgroup {
+    font: inherit;
+    font-synthesis: none;
+  }
+
+  /* React Flow 自带样式，强制继承应用字体栈 */
+  .react-flow,
+  .react-flow__node,
+  .react-flow__controls,
+  .react-flow__panel {
+    font-family: inherit;
+    font-synthesis: none;
+  }
+}
+
+@layer utilities {
+  /* 暗色主题：把现有 Tailwind 语义色映射到 CSS 变量，避免逐页改 class
+     注意：必须放在 utilities layer 里，才能覆盖 Tailwind 自带 utilities。
+     中性色（背景/边框/文字）这组同样对 sepia/solarized-light 生效——它们
+     跟 dark 一样，--c-surface 等变量已经偏离了 Tailwind 类名本身的字面色，
+     裸 bg-white 在它们背景下会露出一块突兀的纯白。彩色强调色/阴影压暗那组
+     （下面 violet/blue/amber/… 与 shadow 相关规则）只解决暗背景下亮块刺眼
+     的问题，sepia/solarized-light 是浅色系，不需要，所以不在此列。 */
+  .dark .bg-white, .theme-sepia .bg-white, .theme-solarized-light .bg-white { background-color: var(--c-surface); }
+  .dark .bg-\[\#f8f9fb\], .theme-sepia .bg-\[\#f8f9fb\], .theme-solarized-light .bg-\[\#f8f9fb\] { background-color: var(--c-bg-app); }
+  .dark .bg-slate-50, .theme-sepia .bg-slate-50, .theme-solarized-light .bg-slate-50 { background-color: var(--c-surface-muted); }
+  .dark .bg-slate-50\/50, .theme-sepia .bg-slate-50\/50, .theme-solarized-light .bg-slate-50\/50 { background-color: color-mix(in srgb, var(--c-surface-muted) 50%, transparent); }
+  .dark .bg-slate-50\/60, .theme-sepia .bg-slate-50\/60, .theme-solarized-light .bg-slate-50\/60 { background-color: color-mix(in srgb, var(--c-surface-muted) 60%, transparent); }
+  .dark .bg-slate-50\/80, .theme-sepia .bg-slate-50\/80, .theme-solarized-light .bg-slate-50\/80 { background-color: color-mix(in srgb, var(--c-surface-muted) 80%, transparent); }
+  .dark .bg-slate-100, .theme-sepia .bg-slate-100, .theme-solarized-light .bg-slate-100 { background-color: var(--c-surface-hover); }
+  .dark .bg-slate-200, .theme-sepia .bg-slate-200, .theme-solarized-light .bg-slate-200 { background-color: var(--c-border); }
+  .dark .bg-slate-200\/80, .theme-sepia .bg-slate-200\/80, .theme-solarized-light .bg-slate-200\/80 { background-color: color-mix(in srgb, var(--c-border) 80%, transparent); }
+
+  .dark .border-slate-100, .theme-sepia .border-slate-100, .theme-solarized-light .border-slate-100 { border-color: var(--c-border-subtle); }
+  .dark .border-slate-200, .theme-sepia .border-slate-200, .theme-solarized-light .border-slate-200 { border-color: var(--c-border); }
+  .dark .border-slate-300, .theme-sepia .border-slate-300, .theme-solarized-light .border-slate-300 { border-color: var(--c-border); }
+
+  .dark .text-slate-800, .theme-sepia .text-slate-800, .theme-solarized-light .text-slate-800 { color: var(--c-text); }
+  .dark .text-slate-700, .theme-sepia .text-slate-700, .theme-solarized-light .text-slate-700 { color: var(--c-text-secondary); }
+  .dark .text-slate-600, .theme-sepia .text-slate-600, .theme-solarized-light .text-slate-600 { color: var(--c-text-secondary); }
+  .dark .text-slate-500, .theme-sepia .text-slate-500, .theme-solarized-light .text-slate-500 { color: var(--c-text-muted); }
+  .dark .text-slate-400, .theme-sepia .text-slate-400, .theme-solarized-light .text-slate-400 { color: var(--c-text-faint); }
+  .dark .text-slate-300, .theme-sepia .text-slate-300, .theme-solarized-light .text-slate-300 { color: var(--c-text-dim); }
+
+  .dark .hover\:bg-slate-50:hover, .theme-sepia .hover\:bg-slate-50:hover, .theme-solarized-light .hover\:bg-slate-50:hover { background-color: var(--c-surface-muted); }
+  .dark .hover\:bg-slate-100:hover, .theme-sepia .hover\:bg-slate-100:hover, .theme-solarized-light .hover\:bg-slate-100:hover { background-color: var(--c-surface-hover); }
+  .dark .hover\:bg-slate-200:hover, .theme-sepia .hover\:bg-slate-200:hover, .theme-solarized-light .hover\:bg-slate-200:hover { background-color: var(--c-border); }
+  .dark .hover\:text-slate-600:hover, .theme-sepia .hover\:text-slate-600:hover, .theme-solarized-light .hover\:text-slate-600:hover { color: var(--c-text-secondary); }
+  .dark .hover\:text-slate-800:hover, .theme-sepia .hover\:text-slate-800:hover, .theme-solarized-light .hover\:text-slate-800:hover { color: var(--c-text); }
+
+  .dark input,
+  .dark textarea,
+  .dark select,
+  .theme-sepia input,
+  .theme-sepia textarea,
+  .theme-sepia select,
+  .theme-solarized-light input,
+  .theme-solarized-light textarea,
+  .theme-solarized-light select {
+    background-color: var(--c-surface);
+    color: var(--c-text);
+    border-color: var(--c-border);
+  }
+
+  .dark .disabled\:bg-slate-50:disabled, .theme-sepia .disabled\:bg-slate-50:disabled, .theme-solarized-light .disabled\:bg-slate-50:disabled { background-color: var(--c-surface-muted); }
+
+  /* 布局背景：用语义变量替代硬编码 hex */
+  .bg-app { background-color: var(--c-bg-app); }
+
+  .dark ::placeholder, .theme-sepia ::placeholder, .theme-solarized-light ::placeholder { color: var(--c-text-faint); }
+
+  .dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+  .theme-sepia .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+  .theme-solarized-light .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--c-border-subtle);
+  }
+
+  .dark .shadow-sm {
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+  }
+  .dark .shadow-lg {
+    box-shadow:
+      0 10px 15px -3px rgb(0 0 0 / 0.45),
+      0 4px 6px -4px rgb(0 0 0 / 0.35);
+  }
+
+  /* 彩色浅底 / 强调字：暗色下压暗，避免亮块 */
+  .dark .bg-violet-50 { background-color: color-mix(in srgb, #8b5cf6 16%, var(--c-surface-muted)); }
+  .dark .bg-violet-100 { background-color: color-mix(in srgb, #8b5cf6 22%, var(--c-surface-muted)); }
+  .dark .text-violet-700 { color: #ddd6fe; }
+  .dark .border-violet-200 { border-color: color-mix(in srgb, #8b5cf6 32%, var(--c-border)); }
+  .dark .border-violet-400 { border-color: color-mix(in srgb, #8b5cf6 55%, var(--c-border)); }
+  .dark .hover\:bg-violet-50:hover { background-color: color-mix(in srgb, #8b5cf6 16%, var(--c-surface-muted)); }
+  .dark .hover\:border-violet-400:hover { border-color: color-mix(in srgb, #8b5cf6 55%, var(--c-border)); }
+
+  .dark .bg-blue-50 { background-color: color-mix(in srgb, #3b82f6 16%, var(--c-surface-muted)); }
+  .dark .text-blue-700 { color: #93c5fd; }
+  .dark .border-blue-300 { border-color: color-mix(in srgb, #3b82f6 45%, var(--c-border)); }
+
+  .dark .bg-amber-50 { background-color: color-mix(in srgb, #f59e0b 14%, var(--c-surface-muted)); }
+  .dark .bg-amber-50\/50 { background-color: color-mix(in srgb, #f59e0b 10%, var(--c-surface-muted)); }
+  .dark .bg-amber-100 { background-color: color-mix(in srgb, #f59e0b 20%, var(--c-surface-muted)); }
+  .dark .text-amber-500 { color: #fcd34d; }
+  .dark .text-amber-700 { color: #fcd34d; }
+  .dark .text-amber-800 { color: #fde68a; }
+  .dark .border-amber-200 { border-color: color-mix(in srgb, #f59e0b 35%, var(--c-border)); }
+  .dark .border-amber-300 { border-color: color-mix(in srgb, #f59e0b 45%, var(--c-border)); }
+
+  .dark .bg-rose-50 { background-color: color-mix(in srgb, #f43f5e 14%, var(--c-surface-muted)); }
+  .dark .text-rose-700 { color: #fda4af; }
+  .dark .border-rose-200 { border-color: color-mix(in srgb, #f43f5e 35%, var(--c-border)); }
+
+  .dark .bg-red-50 { background-color: color-mix(in srgb, #ef4444 14%, var(--c-surface-muted)); }
+  .dark .text-red-400 { color: #f87171; }
+  .dark .text-red-500 { color: #fca5a5; }
+  .dark .text-red-600 { color: #fca5a5; }
+  .dark .text-red-700 { color: #fecaca; }
+  .dark .border-red-200 { border-color: color-mix(in srgb, #ef4444 35%, var(--c-border)); }
+  .dark .hover\:bg-red-50:hover { background-color: color-mix(in srgb, #ef4444 14%, var(--c-surface-muted)); }
+  .dark .hover\:text-red-500:hover { color: #fca5a5; }
+
+  .dark .bg-emerald-50 { background-color: color-mix(in srgb, #10b981 14%, var(--c-surface-muted)); }
+  .dark .text-emerald-500 { color: #6ee7b7; }
+  .dark .text-emerald-700 { color: #6ee7b7; }
+  .dark .border-emerald-200 { border-color: color-mix(in srgb, #10b981 35%, var(--c-border)); }
+
+  .dark .hover\:text-slate-700:hover, .theme-sepia .hover\:text-slate-700:hover, .theme-solarized-light .hover\:text-slate-700:hover { color: var(--c-text-secondary); }
+  .dark .hover\:text-slate-800:hover, .theme-sepia .hover\:text-slate-800:hover, .theme-solarized-light .hover\:text-slate-800:hover { color: var(--c-text); }
+
+  /* Header / 顶栏等显式 dark: 用到的 slate 阶 */
+  .dark .bg-slate-500 { background-color: #64748b; }
+  .dark .bg-slate-600 { background-color: #475569; }
+  .dark .bg-slate-700 { background-color: #64748b; }
+  .dark .bg-slate-800 { background-color: var(--c-surface-hover); }
+  .dark .border-slate-600 { border-color: #475569; }
+  .dark .border-slate-700 { border-color: var(--c-border); }
+  .dark .text-slate-100 { color: var(--c-text); }
+  .dark .text-slate-200 { color: var(--c-text-secondary); }
+  .dark .hover\:bg-slate-800:hover { background-color: var(--c-surface-hover); }
+  .dark .hover\:text-slate-200:hover { color: var(--c-text-secondary); }
+
+  .dark .from-white,
+  .theme-sepia .from-white,
+  .theme-solarized-light .from-white {
+    --tw-gradient-from: var(--c-surface);
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+  }
+  .dark .border-slate-300, .theme-sepia .border-slate-300, .theme-solarized-light .border-slate-300 { border-color: var(--c-border); }
+  .dark .disabled\:text-slate-300:disabled, .theme-sepia .disabled\:text-slate-300:disabled, .theme-solarized-light .disabled\:text-slate-300:disabled { color: var(--c-text-dim); }
+
+  /* Toast 彩色阴影 → 暗色下弱化 */
+  .dark .shadow-emerald-100\/80 { --tw-shadow-color: rgb(0 0 0 / 0.35); }
+  .dark .shadow-red-100\/80 { --tw-shadow-color: rgb(0 0 0 / 0.35); }
+  .dark .shadow-slate-200\/80 { --tw-shadow-color: rgb(0 0 0 / 0.35); }
+
+  .chat-scroll-jump-btn {
+    background-color: var(--c-chat-scroll-jump-bg);
+    color: var(--c-chat-scroll-jump-text);
+    border-color: var(--c-chat-scroll-jump-border);
+    box-shadow: var(--c-chat-scroll-jump-shadow);
+  }
+
+  .chat-scroll-jump-btn:hover {
+    background-color: var(--c-chat-scroll-jump-hover);
+  }
+
+  .chat-scroll-jump-btn svg {
+    color: var(--c-chat-scroll-jump-text);
+  }
+}
+
+/* ReactFlow base: remove default node styles we override */
+.react-flow__node { border-radius: 12px; }
+.react-flow__attribution { display: none; }
+.react-flow__selection {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px dashed #3b82f6;
+}
+.react-flow__edge-path {
+  stroke: #94a3b8;
+  stroke-width: 1.5;
+}
+
+.dark .react-flow__edge-path {
+  stroke: #64748b;
+}
+
+.dark .react-flow__controls {
+  background: var(--c-surface);
+  border-color: var(--c-border);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+}
+
+.dark .react-flow__controls-button {
+  background: var(--c-surface);
+  border-color: var(--c-border);
+  fill: var(--c-text-muted);
+}
+
+.dark .react-flow__controls-button:hover {
+  background: var(--c-surface-hover);
+}
+
+/* Scrollable regions that should still scroll but not show a scrollbar (e.g. novel rail). */
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+.shadow-float {
+  box-shadow: 0 4px 16px -4px rgb(15 23 42 / 0.12), 0 1px 2px rgb(15 23 42 / 0.06);
+}
+.dark .shadow-float {
+  box-shadow: 0 4px 16px -4px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

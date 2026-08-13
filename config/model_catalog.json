@@ -1,0 +1,31 @@
+{
+  "cloud_models": [
+    {
+      "id": "claude-opus-4-7",
+      "label": "Claude Opus 4.7",
+      "provider": "anthropic",
+      "model_profile": "anthropic"
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "label": "DeepSeek V4 Flash",
+      "provider": "openai_compatible",
+      "base_url": "https://api.deepseek.com/v1",
+      "model_profile": "deepseek"
+    },
+    {
+      "id": "qwen3.7-flash",
+      "label": "Qwen3.7 Flash",
+      "provider": "openai_compatible",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "model_profile": "qwen"
+    },
+    {
+      "id": "gemini-3-flash-preview",
+      "label": "Gemini 3 Flash",
+      "provider": "openai_compatible",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "model_profile": "openai_compatible"
+    }
+  ]
+}

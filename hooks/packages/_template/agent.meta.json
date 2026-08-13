@@ -1,0 +1,7 @@
+{
+  "package": "{package}",
+  "roles": [
+    "{role}"
+  ],
+  "nodes": []
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chronos:agent.meta",
+  "title": "Chronos Agent Package Meta",
+  "type": "object",
+  "required": ["package", "roles"],
+  "additionalProperties": false,
+  "properties": {
+    "package": {
+      "type": "string",
+      "description": "与 hooks/packages/<package>/ 目录名一致"
+    },
+    "roles": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "本包提供的 prompt 角色名（{role}.md）"
+    },
+    "nodes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "pipeline_manifest 中引用本 agent 的节点 key（可选，供文档/CI）"
+    },
+    "unwired": {
+      "type": "boolean",
+      "description": "true=有意保留但暂不接入 pipeline 的库 agent；包结构检查不将其判为孤儿"
+    }
+  }
+}

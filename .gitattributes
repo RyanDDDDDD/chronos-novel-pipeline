@@ -1,0 +1,18 @@
+# Handle line endings automatically for files detected as text
+# and perform CRLF -> LF normalization upon check-in.
+* text=auto
+
+# Explicitly set all text files to use LF on checkout
+# (Recommended for cross-platform consistency in this project)
+*.md text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf
+
+# Keep binary files as-is
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary

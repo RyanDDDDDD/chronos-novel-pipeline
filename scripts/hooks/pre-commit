@@ -1,0 +1,87 @@
+#!/bin/sh
+# Git pre-commit hook - 重置运行时状态 + ruff + mypy
+#
+# 版本管理的 hook：通过 `git config core.hooksPath scripts/hooks` 启用
+# （见 scripts/hooks/install.sh）。修改此文件即修改全仓的提交门禁。
+#
+# pytest 完全不在 commit 门禁跑——新 worktree 没有 pytest-testmon 基线
+# （.testmondata）时 `--testmon` 会退化成全量跑一次，实测在新建的 worktree
+# 里能把单次 commit 拖到 3 分钟以上，还曾在派发给 Cursor headless CLI 时
+# 撞上其自身 shell 工具的超时/僵尸进程 SQLite WAL 锁竞争（见
+# docs/TECHNICAL_JOURNEY.md #30）。全量回归测试挪到两个真正的集成关口：
+# merge 进目标分支时（scripts/hooks/pre-merge-commit）、push 前兜底
+# （scripts/hooks/pre-push）——commit 门禁只保留跟单次改动强相关、快速
+# 的静态检查（结构校验 + lint + 类型），不跑测试。
+
+echo "=================================================="
+echo "🚀 [Git Pre-commit Hook] 重置运行时状态..."
+echo "=================================================="
+
+python scripts/reset_pipeline_state.py
+
+echo "=================================================="
+echo "🚀 [Git Pre-commit Hook] Agent Package 结构校验..."
+echo "=================================================="
+
+python scripts/validate_agent_packages.py
+META_RESULT=$?
+if [ $META_RESULT -ne 0 ]; then
+    echo ""
+    echo "❌ Agent Package 校验未通过！提交已中断。"
+    echo "修复后运行: uv run python scripts/sync_agent_meta.py"
+    echo "=================================================="
+    exit 1
+fi
+
+echo ""
+echo "=================================================="
+echo "🚀 [Git Pre-commit Hook] 开始执行 ruff lint 检查..."
+echo "=================================================="
+
+if [ -f "./.venv/Scripts/ruff.exe" ]; then
+    RUFF_CMD="./.venv/Scripts/ruff.exe"
+elif [ -f "./.venv/bin/ruff" ]; then
+    RUFF_CMD="./.venv/bin/ruff"
+else
+    RUFF_CMD="ruff"
+fi
+
+$RUFF_CMD check src/backend hooks
+RUFF_RESULT=$?
+
+if [ $RUFF_RESULT -ne 0 ]; then
+    echo ""
+    echo "❌ ruff 检查未通过！提交已中断。"
+    echo "请修复 lint 错误后再尝试 commit。"
+    echo "=================================================="
+    exit 1
+fi
+
+echo ""
+echo "=================================================="
+echo "🚀 [Git Pre-commit Hook] 开始执行 mypy 类型检查..."
+echo "=================================================="
+
+if [ -f "./.venv/Scripts/mypy.exe" ]; then
+    MYPY_CMD="./.venv/Scripts/mypy.exe"
+elif [ -f "./.venv/bin/mypy" ]; then
+    MYPY_CMD="./.venv/bin/mypy"
+else
+    MYPY_CMD="mypy"
+fi
+
+$MYPY_CMD src/backend hooks
+MYPY_RESULT=$?
+
+if [ $MYPY_RESULT -ne 0 ]; then
+    echo ""
+    echo "❌ mypy 类型检查未通过！提交已中断。"
+    echo "请修复类型错误后再尝试 commit。"
+    echo "=================================================="
+    exit 1
+fi
+
+echo ""
+echo "✅ 结构校验、lint、类型检查全部通过。允许提交。"
+echo "=================================================="
+exit 0

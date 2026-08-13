@@ -1,0 +1,84 @@
+# Superpowers transient data and interactive sessions
+.superpowers/
+
+# Auto-generated documentation, plans, and specs
+docs/generated/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Python virtual environment
+.venv/
+venv/
+
+# pytest-testmon 本地增量测试状态（每台机器/每个 worktree 各自建立）
+.testmondata*
+
+# uv lock file (commit this)
+# uv.lock is intentionally tracked
+
+# Chapter refinement outputs (Cold Storage)
+chapters/*
+!chapters/README.md
+
+# 数据目录（运行时产物，不纳入版本）
+data/
+
+# Sandbox workspace
+workspace/*
+!workspace/README.md
+
+# Prompt 全链路日志（本地调试用，禁止提交）
+logs/
+
+# 本地配置（含 API Key，禁止提交）
+config/config.json
+# 旧版单文件编排（已退役，保留 ignore 防误提交）
+config/pipeline_manifest.json
+config/pipeline_layout.json
+# 多 pipeline 档案（自由增删/切换，不纳入版本）
+config/pipelines/
+.claude/
+.vs/
+.vscode/
+.gemini/
+.idea/
+.project_memory/
+
+# Root dev tooling (npm run dev)
+node_modules/
+
+# Global pycache directory
+.pycache_global/
+
+# Git Worktrees
+.worktrees/
+.worktree_*/
+.worktree_translate/
+
+# 引擎运行时产物（非创作数据）
+var/
+
+# PyInstaller 打包产物（scripts/release/* 生成，含 dist/chronos/_internal 等）
+/dist/
+/build/
+
+# 私有本地内容包（不进 git，私有仓库也不进）——本地磁盘上继续存在，
+# 引擎运行时按目录扫描加载，不受此规则影响
+hooks/content_packs/local_pack/
+
+# 本地环境变量 / 密钥
+.env
+.env.*
+
+# 覆盖率报告（含本机绝对路径，运行时产物）
+coverage.xml
+.coverage
+htmlcov/
+
+# 运行时 sqlite（含 backend 内部子目录，非仅顶层 data/）
+*.sqlite
+*.sqlite3
+
