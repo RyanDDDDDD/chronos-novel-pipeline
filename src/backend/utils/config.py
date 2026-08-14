@@ -28,7 +28,6 @@ _DEFAULTS: dict = {
         "qianfan_api_key": "",
         "search_provider": "tavily",
         "search_top_k": 5,
-        "search_ping_enabled": False,
     },
     "server": {
         "engine_port": 8776,

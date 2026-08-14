@@ -20,8 +20,7 @@
     "tavily_api_key": "",
     "qianfan_api_key": "",
     "search_provider": "tavily",
-    "search_top_k": 5,
-    "search_ping_enabled": false
+    "search_top_k": 5
   },
   "server": {
     "engine_port": 8776

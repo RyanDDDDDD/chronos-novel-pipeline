@@ -238,15 +238,6 @@ def test_custom_models_migration_is_idempotent_when_already_present(tmp_path):
     }]
 
 
-def test_default_config_search_ping_enabled_defaults_false(tmp_path):
-    from utils import config as config_mod
-
-    p = tmp_path / "config.json"
-    p.write_text("{}", encoding="utf-8")
-    cfg = config_mod._load(str(p))
-    assert cfg["api"]["search_ping_enabled"] is False
-
-
 def test_get_config_ignores_path_on_subsequent_calls(tmp_path, monkeypatch):
     """Regression: once _config is loaded, later get_config(path) calls with a DIFFERENT
     path are silently ignored and the first-loaded value keeps winning. This is a

@@ -10,6 +10,7 @@ import { Input } from '@/shared/components/ui/input'
 import { Textarea } from '@/shared/components/ui/textarea'
 import { Button } from '@/shared/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/components/ui/tooltip'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select'
 import type { AppDispatch } from '@/shared/store/store'
 import { fetchServiceStatus } from '@/shared/api/servicePing'
 import {
@@ -36,6 +37,8 @@ export function Field({
     </div>
   )
 }
+
+const STYLE_GUARD_DEFAULT_VALUE = '__global_default__'
 
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
   return (
@@ -468,16 +471,6 @@ export default function ServiceConfigPage() {
               }))}
             />
           </Field>
-
-          <Field label="启动时检测检索连通性" hint="仅影响应用启动时是否自动检测检索服务连通性（会消耗一次真实检索配额，如百度千帆每日限 100 次，默认关闭）；保存设置后始终会检测一次，不受此开关影响。对应 api.search_ping_enabled。">
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-              <Switch
-                checked={api.search_ping_enabled ?? false}
-                onCheckedChange={(v) => patch((c) => ({ ...c, api: { ...(c.api ?? {}), search_ping_enabled: v } }))}
-              />
-              应用启动时自动检测检索服务连通性
-            </label>
-          </Field>
         </Section>
 
         <Section
@@ -685,45 +678,25 @@ export default function ServiceConfigPage() {
                     单句禁用词/句式局部重写专用；默认沿用上方全局默认且强制关闭思考模式。对应 llm.style_guard_model_ref。
                   </div>
                 </div>
-                <label
-                  className={`flex items-center gap-2 border rounded-md px-3 py-2 text-xs cursor-pointer ${
-                    !(llm.style_guard_model_ref ?? '').trim()
-                      ? 'border-[var(--c-accent)] bg-[var(--c-accent-subtle)]'
-                      : 'border-[var(--c-border)]'
-                  }`}
+                <Select
+                  value={(llm.style_guard_model_ref ?? '').trim() || STYLE_GUARD_DEFAULT_VALUE}
+                  onValueChange={(v) => patch(c => ({
+                    ...c,
+                    llm: { ...(c.llm ?? {}), style_guard_model_ref: v === STYLE_GUARD_DEFAULT_VALUE ? '' : v },
+                  }))}
                 >
-                  <input
-                    type="radio"
-                    name="style_guard_model_ref"
-                    checked={!(llm.style_guard_model_ref ?? '').trim()}
-                    onChange={() => patch(c => ({
-                      ...c,
-                      llm: { ...(c.llm ?? {}), style_guard_model_ref: '' },
-                    }))}
-                  />
-                  沿用全局默认（思考模式关闭）
-                </label>
-                {[...catalog, ...(llm.custom_models ?? []).filter(m => m.provider !== 'image_gen')].map(entry => (
-                  <label
-                    key={`style-guard-${entry.id}`}
-                    className={`flex items-center gap-2 border rounded-md px-3 py-2 text-xs cursor-pointer ${
-                      (llm.style_guard_model_ref ?? '') === entry.id
-                        ? 'border-[var(--c-accent)] bg-[var(--c-accent-subtle)]'
-                        : 'border-[var(--c-border)]'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="style_guard_model_ref"
-                      checked={(llm.style_guard_model_ref ?? '') === entry.id}
-                      onChange={() => patch(c => ({
-                        ...c,
-                        llm: { ...(c.llm ?? {}), style_guard_model_ref: entry.id },
-                      }))}
-                    />
-                    {'label' in entry && entry.label ? entry.label : entry.id}
-                  </label>
-                ))}
+                  <SelectTrigger aria-label="文风守卫重写模型" className="w-full text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={STYLE_GUARD_DEFAULT_VALUE}>沿用全局默认（思考模式关闭）</SelectItem>
+                    {[...catalog, ...(llm.custom_models ?? []).filter(m => m.provider !== 'image_gen')].map(entry => (
+                      <SelectItem key={`style-guard-${entry.id}`} value={entry.id}>
+                        {'label' in entry && entry.label ? entry.label : entry.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           )}

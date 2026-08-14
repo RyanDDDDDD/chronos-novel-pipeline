@@ -56,25 +56,42 @@ def render_dynamic_cast_block(
     return "\n\n## 在场角色档案\n" + "\n\n".join(cards)
 
 
+_RELATED_CAST_LIMIT = 5
+
+
 def resolve_related_cast(
     present: set[str] | list[str], overlay: dict[str, dict] | None = None,
 ) -> list[str]:
     """Characters connected via a relationship-graph edge to any confidently-present character
-    (relationship_graph.related_to_present) -- background/relationship context, never itself a
-    claim that they're on stage. This is the relationship graph's actual intended use in
+    (relationship_graph.iter_edges) -- background/relationship context, never itself a claim
+    that they're on stage. This is the relationship graph's actual intended use in
     story_sandbox: a structured from/to lookup keyed off already-resolved present names, not a
     re-scan of free text for ref_terms (that's exactly the ambiguity entity_index.py::
     scan_characters dropped -- see its docstring). See
     docs/superpowers/specs/2026-07-26-sandbox-present-vs-related-cast-design.md.
 
+    Ranked by how many present-connecting edges each related character has (either direction
+    counts) and capped to the top _RELATED_CAST_LIMIT, so a heavily-connected present cast
+    doesn't balloon the injected related-cast block -- this is scoped to edges touching
+    `present`, not each character's global degree across the whole graph, since relevance to
+    who's actually in the scene is what the cap is meant to preserve.
+
     `overlay` is the session-local relationship_overlay state field (see profile_mutate.py) --
     laid over the static base graph via relationship_graph.merge_overlay before resolving, so an
     edge this session itself proposed can surface a related character too, without ever writing
     back to relationship_edges.jsonl."""
-    from engine.setup.cast.relationship_graph import load_graph, merge_overlay, related_to_present
+    from engine.setup.cast.relationship_graph import iter_edges, load_graph, merge_overlay
 
     graph = merge_overlay(load_graph(), overlay or {})
-    return sorted(related_to_present(graph, set(present)))
+    present = set(present)
+    counts: dict[str, int] = {}
+    for e in iter_edges(graph):
+        if e["from"] in present and e["to"] not in present:
+            counts[e["to"]] = counts.get(e["to"], 0) + 1
+        elif e["to"] in present and e["from"] not in present:
+            counts[e["from"]] = counts.get(e["from"], 0) + 1
+    ranked = sorted(counts, key=lambda name: (-counts[name], name))
+    return sorted(ranked[:_RELATED_CAST_LIMIT])
 
 
 def render_related_cast_block(
