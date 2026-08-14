@@ -1,12 +1,11 @@
 """Pipeline Table of Contents: Chapter Listing and Disk Cleanup."""
 from __future__ import annotations
 
-import json
 import re
 import shutil as _shutil
 from pathlib import Path
 
-from api.services.paths import chapters_dir, plot_library_path
+from api.services.paths import chapters_dir
 
 _CHAPTER_DIR_RE = re.compile(r"^第(\d+)章$")
 _EXCLUDED_DISK_CHAPTERS = frozenset({999})
@@ -47,23 +46,23 @@ def read_author_manuscript(chapter: int) -> dict:
 
 def list_chapters() -> list[dict]:
     """
-Merge the plot library and the disk chapter directory to return a chapter list that can be selected by the front-end drop-down."""
-    meta: dict[int, str | None] = {}
+Merge the plot library and the disk chapter directory to return a chapter list that can be selected by the front-end drop-down.
 
-    plp = plot_library_path()
-    if plp.is_file():
-        try:
-            plots = json.loads(plp.read_text(encoding="utf-8"))
-            if isinstance(plots, list):
-                for entry in plots:
-                    if not isinstance(entry, dict):
-                        continue
-                    ch = entry.get("chapter")
-                    if isinstance(ch, int) and ch > 0:
-                        title = entry.get("title")
-                        meta[ch] = title if isinstance(title, str) else None
-        except (json.JSONDecodeError, OSError):
-            pass
+    Plot source is SQLite (get_plot_repo().list_raw()), not plot_library_path()'s JSON file --
+    SqlitePlotRepository's writes never touch that file, so reading it here used to silently
+    yield only whatever stale/empty snapshot was left over, collapsing the dropdown down to the
+    "no chapters" fallback (see archive_view.py::_plot_chapters() for the same fix applied
+    2026-08-09)."""
+    from repositories import get_plot_repo
+
+    meta: dict[int, str | None] = {}
+    for entry in get_plot_repo().list_raw():
+        if not isinstance(entry, dict):
+            continue
+        ch = entry.get("chapter")
+        if isinstance(ch, int) and ch > 0:
+            title = entry.get("title")
+            meta[ch] = title if isinstance(title, str) else None
 
     plot_nums = set(meta)
     cd = chapters_dir()
