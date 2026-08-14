@@ -38,12 +38,18 @@ def _write_legacy_archive(arc_dir, name: str, chapter: int, payload: dict) -> No
 def test_collapses_multi_stage_timeline_and_flattens_archive(tmp_path, monkeypatch):
     lore = [{"name": "甲", "given_name": "甲", "role": "同质堕落型",
              "causal_anchors": {}, "sliders": {}}]
-    plot = [{"chapter": 1, "title": "一", "core_xp": [], "stages": [
-        {"stage_num": 1, "title": "s", "location": "屋内", "description": "事件",
-         "characters": {"甲": {}}},
-        {"stage_num": 2, "title": "s2", "location": "屋外", "description": "续",
-         "characters": {"甲": {}}},
-    ]}]
+    plot = [
+        {"chapter": 1, "title": "一", "core_xp": [], "stages": [
+            {"stage_num": 1, "title": "s", "location": "屋内", "description": "事件",
+             "characters": {"甲": {}}},
+            {"stage_num": 2, "title": "s2", "location": "屋外", "description": "续",
+             "characters": {"甲": {}}},
+        ]},
+        {"chapter": 2, "title": "二", "core_xp": [], "stages": [
+            {"stage_num": 1, "title": "s", "location": "屋外", "description": "续章",
+             "characters": {"甲": {}}},
+        ]},
+    ]
     arc_dir = _common_setup(tmp_path, monkeypatch, lore, plot)
 
     from context import character_timeline

@@ -4,7 +4,7 @@ import pytest
 from engine.setup_chat.tools import edit_character
 from pydantic import ValidationError
 
-from repo_test_helpers import init_store, lore_raw, save_archive, seed_lore
+from repo_test_helpers import init_store, lore_raw, save_archive, seed_lore, seed_plot
 
 
 @pytest.fixture(autouse=True)
@@ -132,6 +132,7 @@ async def test_edit_character_validation_error_not_written(monkeypatch, tmp_path
 async def test_edit_character_clears_timeline_and_archives(monkeypatch, tmp_path):
     _isolate_timeline(tmp_path, monkeypatch)
     seed_lore([_full_char("甲"), _full_char("乙")])
+    seed_plot([{"chapter": 1}])
 
     from context import character_timeline as ct
     ct.append_stage("甲", 1, 1, {"state": {}})

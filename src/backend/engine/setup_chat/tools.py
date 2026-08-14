@@ -1298,6 +1298,9 @@ def _write_timeline_delta(chapter: int, name: str, profile: dict) -> dict | str:
     from engine.archive.sliders import character_rubrics, valid_levels
 
     rubrics = character_rubrics(name)
+    from repositories import get_lore_repo
+    if get_lore_repo().get_character(name) is None:
+        return f"角色「{name}」不在花名册中，请先用 add_character 建档，或检查名字是否有误。未写入。"
     nd, dropped = _normalize_delta(profile or {})
 
     pers = nd.get("personality")

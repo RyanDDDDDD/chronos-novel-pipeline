@@ -63,6 +63,8 @@ def _isolated_checkpoint(monkeypatch, tmp_path):
         "engine.story_sandbox.cast.resolve_character_cards",
         lambda chapter, names: [{"name": n, "card": f"角色：{n}"} for n in names],
     )
+    from repo_test_helpers import seed_plot
+    seed_plot([{"chapter": 0}, {"chapter": 1}])
     yield
     import asyncio
 

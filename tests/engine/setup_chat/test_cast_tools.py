@@ -478,7 +478,7 @@ async def test_delete_character_core_not_found(monkeypatch, tmp_path):
 async def test_delete_character_core_cascades_chapter_mentioning_name(monkeypatch, tmp_path):
     _isolate_timeline(tmp_path, monkeypatch)
     _setup_roster(monkeypatch, tmp_path, ["甲", "乙"])
-    _patch_edges_db(monkeypatch, tmp_path)
+    _patch_edges_db(monkeypatch, tmp_path, ["甲", "乙"])
     from engine.memory_recall import entity_index
     entity_index.invalidate_entity_vocab_cache()
 
@@ -521,7 +521,7 @@ async def test_delete_character_core_cascades_chapter_mentioning_name(monkeypatc
 async def test_delete_character_core_removes_relationship_edges(monkeypatch, tmp_path):
     _patch_empty_plot(monkeypatch, tmp_path)
     _setup_roster(monkeypatch, tmp_path, ["甲", "乙"])
-    _patch_edges_db(monkeypatch, tmp_path)
+    _patch_edges_db(monkeypatch, tmp_path, ["甲", "乙"])
     from engine.memory_recall import entity_index
     entity_index.invalidate_entity_vocab_cache()
 
@@ -628,8 +628,12 @@ def _patch_empty_plot(_monkeypatch, _tmp_path):
     seed_plot([])
 
 
-def _patch_edges_db(monkeypatch, tmp_path):
-    """Route relationship edge IO to an isolated sqlite db under tmp_path."""
+def _patch_edges_db(monkeypatch, tmp_path, names: list[str] | None = None):
+    """Route relationship edge IO to an isolated sqlite db under tmp_path.
+
+    When `names` is given, also seed those characters into the isolated db's lore_characters
+    so append_edge's character_id FK resolution succeeds (edges live in a different file from
+    the novel's main chronos.sqlite3 roster)."""
     db = str(tmp_path / "edges.sqlite3")
     import engine.setup.cast.relationship_graph as rg
 
@@ -639,6 +643,15 @@ def _patch_edges_db(monkeypatch, tmp_path):
     monkeypatch.setattr(rg, "load_graph", lambda path=None: real_load(db))
     monkeypatch.setattr(rg, "append_edge", lambda edge, path=None: real_append(edge, path=db))
     monkeypatch.setattr(rg, "remove_edge", lambda frm, to, path=None: real_remove(frm, to, path=db))
+    if names:
+        from repositories.sqlite_store import get_connection
+        conn = get_connection(db)
+        for i, name in enumerate(names):
+            conn.execute(
+                "INSERT INTO lore_characters (name, data_json, seq) VALUES (?, '{}', ?)",
+                (name, i),
+            )
+        conn.commit()
     return db
 
 
@@ -661,7 +674,7 @@ def _isolate_timeline(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_read_relationships_no_edges(monkeypatch, tmp_path):
     _setup_roster(monkeypatch, tmp_path, ["甲", "乙"])
-    _patch_edges_db(monkeypatch, tmp_path)
+    _patch_edges_db(monkeypatch, tmp_path, ["甲", "乙"])
 
     out = await read_relationships.ainvoke({"name": "甲"})
     assert "没有任何边" in out and "甲" in out
@@ -670,7 +683,7 @@ async def test_read_relationships_no_edges(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_add_relationship_edge_then_read_both_directions(monkeypatch, tmp_path):
     _setup_roster(monkeypatch, tmp_path, ["甲", "乙"])
-    _patch_edges_db(monkeypatch, tmp_path)
+    _patch_edges_db(monkeypatch, tmp_path, ["甲", "乙"])
 
     out = await add_relationship_edge.ainvoke({
         "from_name": "甲", "to_name": "乙", "nature": "师徒",
@@ -687,7 +700,7 @@ async def test_add_relationship_edge_then_read_both_directions(monkeypatch, tmp_
 @pytest.mark.asyncio
 async def test_add_relationship_edge_rejects_unknown_name(monkeypatch, tmp_path):
     _setup_roster(monkeypatch, tmp_path, ["甲"])
-    db_path = _patch_edges_db(monkeypatch, tmp_path)
+    db_path = _patch_edges_db(monkeypatch, tmp_path, ["甲"])
 
     out = await add_relationship_edge.ainvoke({
         "from_name": "甲", "to_name": "路人", "nature": "世仇",
@@ -701,7 +714,7 @@ async def test_add_relationship_edge_rejects_unknown_name(monkeypatch, tmp_path)
 @pytest.mark.asyncio
 async def test_remove_relationship_edge_removes_and_is_idempotent(monkeypatch, tmp_path):
     _setup_roster(monkeypatch, tmp_path, ["甲", "乙"])
-    _patch_edges_db(monkeypatch, tmp_path)
+    _patch_edges_db(monkeypatch, tmp_path, ["甲", "乙"])
 
     await add_relationship_edge.ainvoke({
         "from_name": "甲", "to_name": "乙", "nature": "世仇",
@@ -737,7 +750,7 @@ def test_delete_chapter_args_requires_chapter_at_least_one():
 async def test_delete_character_tool_forwards_to_core(monkeypatch, tmp_path):
     _patch_empty_plot(monkeypatch, tmp_path)
     _setup_roster(monkeypatch, tmp_path, ["甲"])
-    _patch_edges_db(monkeypatch, tmp_path)
+    _patch_edges_db(monkeypatch, tmp_path, ["甲"])
     from engine.memory_recall import entity_index
     entity_index.invalidate_entity_vocab_cache()
     monkeypatch.setattr(

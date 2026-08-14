@@ -57,6 +57,8 @@ def test_derive_timeline_done_when_archive_exists(monkeypatch, tmp_path):
 
     _patch_paths(monkeypatch, tmp_path)
     assert cp.derive_task_status({"kind": "timeline", "params": {"chapter": 1}}) == "pending"
+    seed_lore([{"name": "爱丽丝"}])
+    seed_plot([{"chapter": 1}])
     save_archive("爱丽丝", 1, {"name": "爱丽丝"})
     assert cp.derive_task_status({"kind": "timeline", "params": {"chapter": 1}}) == "done"
 
@@ -82,6 +84,7 @@ def test_derive_timeline_aggregate_no_chapter(monkeypatch, tmp_path):
     """
 Aggregation timeline task (no chapter): All plot chapters have files and are done."""
     _patch_paths(monkeypatch, tmp_path)
+    seed_lore([{"name": "甲"}])
     seed_plot([{"chapter": 1}, {"chapter": 2}])
     assert cp.derive_task_status({"kind": "timeline", "params": {}}) == "pending"  #No files
     from repo_test_helpers import save_archive
@@ -94,6 +97,7 @@ Aggregation timeline task (no chapter): All plot chapters have files and are don
 def test_derive_timeline_aggregate_partial_pending(monkeypatch, tmp_path):
     """Aggregation timeline: Only some chapters have files → still pending."""
     _patch_paths(monkeypatch, tmp_path)
+    seed_lore([{"name": "甲"}])
     seed_plot([{"chapter": 1}, {"chapter": 2}])
     from repo_test_helpers import save_archive
 

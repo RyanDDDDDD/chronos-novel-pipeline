@@ -34,5 +34,20 @@ def seed_plot(chapters: list[dict]) -> None:
 
 
 def save_archive(name: str, chapter: int, data: dict) -> None:
+    """Persist an archive row, ensuring lore + plot FK parents exist first.
+
+    Many older tests wrote archives for names/chapters never seeded into lore_characters /
+    plot_chapters. With character_id + chapter FKs that silent orphaning is no longer allowed,
+    so the helper auto-registers missing parents rather than forcing every call site to
+    remember two extra seed calls."""
     init_store()
+    lore = repo.get_lore_repo().list_raw()
+    if not any(isinstance(c, dict) and c.get("name") == name for c in lore):
+        repo.get_lore_repo().save_all([*lore, {"name": name}])
+    plot = repo.get_plot_repo().list_raw()
+    if not any(isinstance(c, dict) and int(c.get("chapter", -1)) == int(chapter) for c in plot):
+        repo.get_plot_repo().save_all([
+            *plot,
+            {"chapter": int(chapter), "title": f"T{chapter}", "stages": []},
+        ])
     repo.get_archive_repo().save(name, chapter, data)

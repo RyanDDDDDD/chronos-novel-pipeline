@@ -1,13 +1,46 @@
 """timeline truncation + list enumeration primitive."""
 from __future__ import annotations
 
+import json
+
 from context import character_timeline as ct
 from utils.paths import use_novel
+
+
+def _seed_character(name: str) -> None:
+    """Register `name` in lore_characters without wiping existing roster rows (FK-safe)."""
+    from repositories.sqlite_store import get_connection
+    from utils.paths import active_novel_id, novel_db_path
+
+    conn = get_connection(novel_db_path(active_novel_id()))
+    if conn.execute("SELECT id FROM lore_characters WHERE name = ?", (name,)).fetchone():
+        return
+    seq = conn.execute("SELECT COALESCE(MAX(seq), -1) + 1 FROM lore_characters").fetchone()[0]
+    conn.execute(
+        "INSERT INTO lore_characters (name, data_json, seq) VALUES (?, ?, ?)",
+        (name, json.dumps({"name": name}, ensure_ascii=False), seq),
+    )
+    conn.commit()
+
+
+def _ensure_plot_chapters(*chapters: int) -> None:
+    from repositories.sqlite_store import get_connection
+    from utils.paths import active_novel_id, novel_db_path
+
+    conn = get_connection(novel_db_path(active_novel_id()))
+    for c in chapters:
+        conn.execute(
+            "INSERT OR IGNORE INTO plot_chapters (chapter, data_json, seq) VALUES (?, '{}', ?)",
+            (c, c),
+        )
+    conn.commit()
 
 
 def _seed(tmp_path, monkeypatch, name, snaps):
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
     with use_novel("test-novel"):
+        _seed_character(name)
+        _ensure_plot_chapters(*(s["chapter"] for s in snaps))
         for s in snaps:
             ct.append_stage(name, s["chapter"], s["stage"], s.get("delta", {}))
 
