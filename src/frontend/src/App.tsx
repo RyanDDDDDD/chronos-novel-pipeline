@@ -17,7 +17,7 @@ import PipelineWorkflowConfigView from '@/features/pipeline/components/PipelineW
 import TokenStatsDashboard from '@/features/stats/components/TokenStatsDashboard'
 import { useWsClient } from '@/shared/hooks/useWsClient'
 import { useToast } from '@/shared/hooks/useToast'
-import { persistChapter, readStoredChapter } from '@/shared/utils/chapterStorage'
+import { persistChapter, readStoredChapter, clearStoredChapter } from '@/shared/utils/chapterStorage'
 import { useChapters } from '@/shared/queries/chapters'
 import {
   chaptersKey, novelsKey, manuscriptChaptersKey, manuscriptKey, setupKey,
@@ -167,16 +167,27 @@ export default function App() {
   useEffect(() => {
     if (!ws || !activeNovelId) return
     const onMsg = (event: MessageEvent) => {
+      let data: { type?: string }
       try {
-        const data = JSON.parse(event.data as string) as { type?: string }
-        if (data.type !== 'setup_chat_done') return
+        data = JSON.parse(event.data as string) as { type?: string }
       } catch {
         return
       }
+      if (data.type !== 'setup_chat_done') return
       void queryClient.invalidateQueries({ queryKey: setupKey('world', activeNovelId) })
       void queryClient.invalidateQueries({ queryKey: setupKey('cast', activeNovelId) })
       void queryClient.invalidateQueries({ queryKey: setupKey('plot', activeNovelId) })
       void queryClient.invalidateQueries({ queryKey: ['skeleton', activeNovelId] })
+      // insert_chapter/delete_chapter shift every later chapter's identity at once -- a
+      // targeted per-chapter invalidate can't express "chapter N used to mean something else
+      // now", so invalidate every query scoped to this novel that isn't already covered above.
+      // This over-invalidates on every setup_chat turn (not just chapter shifts), which is a
+      // deliberate, cheap trade: React Query invalidation only marks queries stale for refetch
+      // on next access, it doesn't refetch eagerly for unmounted queries.
+      void queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey.includes(activeNovelId),
+      })
+      clearStoredChapter(activeNovelId)
     }
     ws.addEventListener('message', onMsg)
     return () => ws.removeEventListener('message', onMsg)

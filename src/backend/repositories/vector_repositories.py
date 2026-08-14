@@ -241,3 +241,31 @@ class SandboxVectorMemoryRepository:
             await asyncio.to_thread(
                 self._copy_branch_sync, chapter, source_branch_id, dest_branch_id, id_remap,
             )
+
+    def _shift_chapter_sync(self, chapter: int, delta: int) -> None:
+        rows = self._store().get({"chapter": chapter})
+        if not rows:
+            return
+        entries: list[dict[str, Any]] = []
+        for r in rows:
+            m = r["metadata"]
+            entities_raw = str(m.get("entities") or "")
+            characters_raw = str(m.get("characters") or "")
+            entries.append({
+                "id": r["id"], "chapter": chapter + delta, "turn_index": m.get("turn_index", 0),
+                "time": m.get("time", ""), "location": m.get("location", ""),
+                "summary": m.get("summary", ""),
+                "entities": entities_raw.split(",") if entities_raw else [],
+                "characters": characters_raw.split(",") if characters_raw else [],
+                "branch_id": m.get("branch_id", ""),
+                "origin": m.get("origin", ""),
+            })
+        self._store().delete(where={"chapter": chapter})
+        self._archive_sync(entries)
+
+    async def shift_chapter(self, chapter: int, delta: int) -> None:
+        """Moves this chapter's archived vector-memory fragments to chapter+delta, same id
+        (in-place renumber, not a copy -- unlike copy_branch, which deliberately mints new ids
+        for a fork). No-op if this chapter has no archived fragments."""
+        async with self._lock:
+            await asyncio.to_thread(self._shift_chapter_sync, chapter, delta)

@@ -20,3 +20,12 @@ export function persistChapter(novelId: string, chapter: number): void {
     // quota / private browsing — ignore
   }
 }
+
+export function clearStoredChapter(novelId: string): void {
+  if (!novelId) return
+  try {
+    localStorage.removeItem(PREFIX + novelId)
+  } catch {
+    // quota / private browsing — ignore
+  }
+}
