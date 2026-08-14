@@ -21,7 +21,7 @@ def _seed_old_schema(db_path: str) -> None:
     conn.execute("INSERT INTO timeline_snapshots VALUES ('甲', 1, 1, '{}')")
     conn.execute("INSERT INTO relationship_edges (from_name, to_name) VALUES ('甲', '乙')")
     conn.execute("INSERT INTO sandbox_events VALUES ('e1', 1, 0, '{}')")
-    conn.execute("INSERT INTO sandbox_events VALUES ('e2', 0, 0, '{}')")  # orphan: chapter 0, no plot row
+    conn.execute("INSERT INTO sandbox_events VALUES ('e2', 0, 0, '{}')")  # free-mode sentinel, no plot row -- not an orphan
     conn.commit()
     conn.close()
 
@@ -36,8 +36,7 @@ def test_migrate_adds_surrogate_id_and_drops_orphans(tmp_path):
     assert counts["lore_characters"] == 2
     assert counts["character_archives"] == 1
     assert counts["character_archives_orphans_dropped"] == 1
-    assert counts["sandbox_events"] == 1
-    assert counts["sandbox_events_orphans_dropped"] == 1
+    assert "sandbox_events" not in counts  # untouched: no chapter FK, so nothing to migrate
 
     conn = sqlite3.connect(db_path)
     cols = [r[1] for r in conn.execute("PRAGMA table_info(lore_characters)").fetchall()]
@@ -47,6 +46,13 @@ def test_migrate_adds_surrogate_id_and_drops_orphans(tmp_path):
         " JOIN lore_characters lc ON lc.id = ca.character_id WHERE lc.name = '甲'",
     ).fetchone()
     assert row == (1,)
+
+    # sandbox_events (including the chapter=0 free-mode row) survives untouched -- this
+    # migration must not delete live free-mode data or add a chapter FK to this table.
+    sandbox_rows = conn.execute(
+        "SELECT id, chapter FROM sandbox_events ORDER BY id",
+    ).fetchall()
+    assert sandbox_rows == [("e1", 1), ("e2", 0)]
 
 
 def test_migrate_is_idempotent(tmp_path):

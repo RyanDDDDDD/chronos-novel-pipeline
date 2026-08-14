@@ -73,14 +73,6 @@ def _save_entries_to_db(entries: list[dict]) -> None:
                 continue
             chapter = int(entry.get("chapter", 0))
             turn_index = int(entry.get("turn_index", 0))
-            # Chapter FK requires a plot_chapters row -- free-mode chapter=0 and tests that
-            # never wrote a plot outline still need to persist events. INSERT OR IGNORE keeps
-            # existing outlines intact while satisfying the constraint.
-            conn.execute(
-                "INSERT OR IGNORE INTO plot_chapters (chapter, data_json, seq)"
-                " VALUES (?, '{}', ?)",
-                (chapter, chapter),
-            )
             conn.execute(
                 "INSERT INTO sandbox_events (id, chapter, turn_index, entry_json)"
                 " VALUES (?, ?, ?, ?)",

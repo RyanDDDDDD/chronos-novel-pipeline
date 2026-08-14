@@ -515,16 +515,11 @@ def _migrate_sandbox_events(novel_id: str, *, dry_run: bool) -> int:
     conn = get_connection(_db_path(novel_id))
     conn.execute("DELETE FROM sandbox_events")
     for entry in entries:
-        chapter = int(entry.get("chapter", 0))
-        conn.execute(
-            "INSERT OR IGNORE INTO plot_chapters (chapter, data_json, seq) VALUES (?, '{}', ?)",
-            (chapter, chapter),
-        )
         conn.execute(
             "INSERT INTO sandbox_events (id, chapter, turn_index, entry_json) VALUES (?, ?, ?, ?)",
             (
                 str(entry["id"]),
-                chapter,
+                int(entry.get("chapter", 0)),
                 int(entry.get("turn_index", 0)),
                 json.dumps(entry, ensure_ascii=False),
             ),

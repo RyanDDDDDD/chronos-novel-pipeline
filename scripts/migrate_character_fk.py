@@ -1,9 +1,16 @@
 """One-off migration: rebuild lore_characters/character_archives/timeline_snapshots/
 relationship_edges to use a surrogate lore_characters.id instead of the bare name string,
-and add the chapter FK constraint to character_archives/timeline_snapshots/sandbox_events.
-SQLite can't ALTER a column into a new PRIMARY KEY or add a FOREIGN KEY to an existing table,
-so each table is rebuilt: rename old -> create new (matches the updated repositories.sqlite_
+and add the chapter FK constraint to character_archives/timeline_snapshots. SQLite can't
+ALTER a column into a new PRIMARY KEY or add a FOREIGN KEY to an existing table, so each
+table is rebuilt: rename old -> create new (matches the updated repositories.sqlite_
 store._DDL shape) -> copy via JOIN (drops orphan rows that don't resolve) -> drop old.
+
+sandbox_events is NOT touched by this migration: chapter=0 there is the reserved, permanent
+"free mode" sentinel (see engine/story_sandbox/prompt.py's module docstring), not an
+orphan -- a chapter FK on this table would require either destroying live free-mode data
+during migration or perpetually faking a chapter-0 plot_chapters row at write time, and the
+latter leaks a phantom chapter into plot_chapters that generate_one_chapter's
+"n = len(chapters)" append-bounds check would miscount. No FK on this table's chapter column.
 
 Idempotent: if lore_characters already has an `id` column, the novel is skipped.
 
@@ -142,28 +149,6 @@ def _migrate_one(db_path: str, *, dry_run: bool) -> dict[str, int]:
             "SELECT COUNT(*) FROM relationship_edges_old",
         ).fetchone()[0] - counts["relationship_edges"]
         conn.execute("DROP TABLE relationship_edges_old")
-
-        # 5. sandbox_events: add the chapter FK by rebuild (column itself is unchanged);
-        #    drop rows whose chapter no longer has a plot_chapters entry (known historical
-        #    orphan: pre-generation sandbox trial runs at chapter=0).
-        conn.execute("ALTER TABLE sandbox_events RENAME TO sandbox_events_old")
-        conn.execute(
-            "CREATE TABLE sandbox_events (id TEXT PRIMARY KEY, chapter INTEGER NOT NULL,"
-            " turn_index INTEGER NOT NULL, entry_json TEXT NOT NULL,"
-            " FOREIGN KEY (chapter) REFERENCES plot_chapters(chapter))",
-        )
-        conn.execute(
-            "INSERT INTO sandbox_events (id, chapter, turn_index, entry_json)"
-            " SELECT o.id, o.chapter, o.turn_index, o.entry_json FROM sandbox_events_old o"
-            " JOIN plot_chapters pc ON pc.chapter = o.chapter",
-        )
-        counts["sandbox_events"] = conn.execute(
-            "SELECT COUNT(*) FROM sandbox_events",
-        ).fetchone()[0]
-        counts["sandbox_events_orphans_dropped"] = conn.execute(
-            "SELECT COUNT(*) FROM sandbox_events_old",
-        ).fetchone()[0] - counts["sandbox_events"]
-        conn.execute("DROP TABLE sandbox_events_old")
 
         if dry_run:
             conn.execute("ROLLBACK")

@@ -77,8 +77,7 @@ CREATE TABLE IF NOT EXISTS sandbox_events (
     id TEXT PRIMARY KEY,
     chapter INTEGER NOT NULL,
     turn_index INTEGER NOT NULL,
-    entry_json TEXT NOT NULL,
-    FOREIGN KEY (chapter) REFERENCES plot_chapters(chapter)
+    entry_json TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS vector_chunks (
     collection TEXT NOT NULL,
