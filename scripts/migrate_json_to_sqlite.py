@@ -158,19 +158,24 @@ def _migrate_relationship_edges(novel_id: str, *, dry_run: bool) -> int:
     if dry_run:
         return len(edges)
 
-    from repositories.sqlite_store import get_connection
+    from repositories.sqlite_store import _character_id, get_connection
 
     conn = get_connection(_db_path(novel_id))
     conn.execute("DELETE FROM relationship_edges")
     for edge in edges:
         frm = str(edge.get("from", "")).strip()
         to = str(edge.get("to", "")).strip()
+        from_id = _character_id(conn, frm)
+        to_id = _character_id(conn, to)
+        if from_id is None or to_id is None:
+            continue  # orphan edge whose endpoint never made it into lore_characters
         conn.execute(
-            "INSERT INTO relationship_edges (from_name, to_name, nature, relationship_anchor,"
-            " from_ref_terms_json, to_ref_terms_json, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO relationship_edges (from_character_id, to_character_id, nature,"
+            " relationship_anchor, from_ref_terms_json, to_ref_terms_json, deleted)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
-                frm,
-                to,
+                from_id,
+                to_id,
                 str(edge.get("nature", "")),
                 str(edge.get("relationship_anchor", "")),
                 json.dumps(_clean_ref_terms(edge.get("from_ref_terms"))),
@@ -246,15 +251,29 @@ def _migrate_timeline(novel_id: str, *, dry_run: bool) -> int:
     if dry_run:
         return len(snapshots)
 
-    from repositories.sqlite_store import get_connection
+    from repositories.sqlite_store import _character_id, get_connection
 
     conn = get_connection(_db_path(novel_id))
     conn.execute("DELETE FROM timeline_snapshots")
     for name, chapter, stage, delta in snapshots:
+        character_id = _character_id(conn, name)
+        if character_id is None:
+            # Ensure lore parent exists so FK insert succeeds for JSON-era timelines that
+            # predate a roster row (legacy data); keep the name as the card identity.
+            conn.execute(
+                "INSERT INTO lore_characters (name, data_json, seq) VALUES (?, ?, ?)",
+                (name, json.dumps({"name": name}, ensure_ascii=False),
+                 conn.execute("SELECT COALESCE(MAX(seq), -1) + 1 FROM lore_characters").fetchone()[0]),
+            )
+            character_id = _character_id(conn, name)
         conn.execute(
-            "INSERT OR REPLACE INTO timeline_snapshots (name, chapter, stage, delta_json)"
-            " VALUES (?, ?, ?, ?)",
-            (name, chapter, stage, json.dumps(delta, ensure_ascii=False)),
+            "INSERT OR IGNORE INTO plot_chapters (chapter, data_json, seq) VALUES (?, '{}', ?)",
+            (chapter, chapter),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO timeline_snapshots"
+            " (character_id, chapter, stage, delta_json) VALUES (?, ?, ?, ?)",
+            (character_id, chapter, stage, json.dumps(delta, ensure_ascii=False)),
         )
     conn.commit()
     return len(snapshots)
@@ -496,11 +515,16 @@ def _migrate_sandbox_events(novel_id: str, *, dry_run: bool) -> int:
     conn = get_connection(_db_path(novel_id))
     conn.execute("DELETE FROM sandbox_events")
     for entry in entries:
+        chapter = int(entry.get("chapter", 0))
+        conn.execute(
+            "INSERT OR IGNORE INTO plot_chapters (chapter, data_json, seq) VALUES (?, '{}', ?)",
+            (chapter, chapter),
+        )
         conn.execute(
             "INSERT INTO sandbox_events (id, chapter, turn_index, entry_json) VALUES (?, ?, ?, ?)",
             (
                 str(entry["id"]),
-                int(entry.get("chapter", 0)),
+                chapter,
                 int(entry.get("turn_index", 0)),
                 json.dumps(entry, ensure_ascii=False),
             ),

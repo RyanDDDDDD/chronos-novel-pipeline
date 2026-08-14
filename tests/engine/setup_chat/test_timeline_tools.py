@@ -25,15 +25,11 @@ def _rebuild_character_tool_schemas(monkeypatch):
 
 _DEFAULT_LORE = [{"name": "甲", "given_name": "甲", "role": "同质堕落型",
                   "causal_anchors": {}, "sliders": {"侵蚀度": 0}}]
-_DEFAULT_PLOT = [{"chapter": 1, "title": "一", "core_xp": [], "stages": [
-    {"stage_num": 1, "title": "s", "location": "屋内", "description": "甲登场",
-     "clothing": {"甲": "校服"}},
-    {"stage_num": 2, "title": "s2", "location": "屋外", "description": "甲续场",
-     "clothing": {"甲": "校服"}},
-]}]
-_TWO_CHAPTER_PLOT = [
+_DEFAULT_PLOT = [
     {"chapter": 1, "title": "一", "core_xp": [], "stages": [
         {"stage_num": 1, "title": "s", "location": "屋内", "description": "甲登场",
+         "clothing": {"甲": "校服"}},
+        {"stage_num": 2, "title": "s2", "location": "屋外", "description": "甲续场",
          "clothing": {"甲": "校服"}},
     ]},
     {"chapter": 2, "title": "二", "core_xp": [], "stages": [
@@ -41,6 +37,7 @@ _TWO_CHAPTER_PLOT = [
          "clothing": {"甲": "校服"}},
     ]},
 ]
+_TWO_CHAPTER_PLOT = _DEFAULT_PLOT
 
 
 def _stub_scan(monkeypatch, names: tuple[str, ...] = ("甲", "乙")) -> None:

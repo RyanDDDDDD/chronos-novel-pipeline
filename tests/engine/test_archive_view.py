@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import engine.archive.archive_view as av
 import pytest
-from repo_test_helpers import save_archive, seed_plot
+from repo_test_helpers import save_archive, seed_lore, seed_plot
 
 
 @pytest.fixture
@@ -17,6 +17,8 @@ def novel(tmp_path, monkeypatch):
 
     import repositories
     repositories.init_repositories()
+    seed_lore([{"name": "角色A"}, {"name": "角色B"}])
+    seed_plot([{"chapter": 1}, {"chapter": 2}, {"chapter": 3}])
 
     return type("N", (), {"write": staticmethod(_write_archive)})
 

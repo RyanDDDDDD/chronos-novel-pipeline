@@ -149,11 +149,9 @@ def test_list_chapters_returns_plot_and_disk_union():
 def test_list_chapters_includes_disk_only_when_progress_exists(tmp_path, monkeypatch):
     import api.services.pipeline_catalog as pc
     from api.services.pipeline_catalog import list_chapters
+    from repo_test_helpers import seed_plot
 
-    plot = [{"chapter": 1, "title": "A"}]
-    plot_path = tmp_path / "plot.json"
-    monkeypatch.setattr(pc, "plot_library_path", lambda: plot_path)
-    plot_path.write_text(json.dumps(plot), encoding="utf-8")
+    seed_plot([{"chapter": 1, "title": "A"}])
 
     ch_root = tmp_path / "chapters"
     orphan = ch_root / "第42章"

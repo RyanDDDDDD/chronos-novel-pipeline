@@ -19,8 +19,10 @@ _LORE = [{"name": "甲", "given_name": "甲", "role": "同质堕落型",
               "level": 0, "text": "清醒",
               "levels": {"0": "清醒。理智在。", "1": "动摇。"},
           }}}]
-_PLOT = [{"chapter": 1, "title": "一", "core_xp": [], "stages": [
-    {"stage_num": 1, "title": "s", "location": "屋内", "description": "甲登场"}]}
+_PLOT = [
+    {"chapter": 0, "title": "prior", "core_xp": [], "stages": []},
+    {"chapter": 1, "title": "一", "core_xp": [], "stages": [
+        {"stage_num": 1, "title": "s", "location": "屋内", "description": "甲登场"}]},
 ]
 _SCHEMA = {}
 

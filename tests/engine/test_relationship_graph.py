@@ -1,6 +1,7 @@
 """Relational graph data layer: append-only edge log + fold-on-read + mutual derivation."""
 from __future__ import annotations
 
+import pytest
 from engine.setup.cast.relationship_graph import (
     append_edge,
     directed_edge,
@@ -28,6 +29,17 @@ _EDGE_AC = {
 }
 
 
+def _seed_roster(db_path: str, names: list[str]) -> None:
+    from repositories.sqlite_store import get_connection
+    conn = get_connection(db_path)
+    for i, name in enumerate(names):
+        conn.execute(
+            "INSERT INTO lore_characters (name, data_json, seq) VALUES (?, '{}', ?)",
+            (name, i),
+        )
+    conn.commit()
+
+
 def _seed_edges_from_jsonl_bytes(db_path: str, content: bytes) -> None:
     import json
 
@@ -36,18 +48,35 @@ def _seed_edges_from_jsonl_bytes(db_path: str, content: bytes) -> None:
 
     conn = get_connection(db_path)
     conn.execute("DELETE FROM relationship_edges")
+    names: set[str] = set()
+    edges: list[dict] = []
     for raw_line in content.splitlines():
         edge = _parse_relationship_edge_line(raw_line)
         if edge is None:
             continue
         frm = str(edge.get("from", "")).strip()
         to = str(edge.get("to", "")).strip()
+        names.add(frm)
+        names.add(to)
+        edges.append({**edge, "from": frm, "to": to})
+    for i, name in enumerate(sorted(names)):
         conn.execute(
-            "INSERT INTO relationship_edges (from_name, to_name, nature, relationship_anchor,"
-            " from_ref_terms_json, to_ref_terms_json, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO lore_characters (name, data_json, seq) VALUES (?, '{}', ?)",
+            (name, i),
+        )
+    for edge in edges:
+        from_id = conn.execute(
+            "SELECT id FROM lore_characters WHERE name = ?", (edge["from"],),
+        ).fetchone()[0]
+        to_id = conn.execute(
+            "SELECT id FROM lore_characters WHERE name = ?", (edge["to"],),
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO relationship_edges (from_character_id, to_character_id, nature,"
+            " relationship_anchor, from_ref_terms_json, to_ref_terms_json, deleted)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
-                frm,
-                to,
+                from_id, to_id,
                 str(edge.get("nature", "")),
                 str(edge.get("relationship_anchor", "")),
                 json.dumps(_clean_ref_terms(edge.get("from_ref_terms"))),
@@ -68,6 +97,7 @@ def test_load_missing_returns_empty(tmp_path):
 
 def test_append_then_load_roundtrip(tmp_path):
     p = str(tmp_path / "edges.sqlite3")
+    _seed_roster(p, ["男主", "女甲", "女乙"])
     append_edge(_EDGE_AB, path=p)
     append_edge(_EDGE_AC, path=p)
     g = load_graph(p)
@@ -80,6 +110,7 @@ def test_append_does_not_read_existing_content(tmp_path):
     """核心不变量：append_edge 是纯追加，不依赖读取现有内容——多次调用互不干扰，
     模拟并发场景下两个后台任务各自 append 自己的边。"""
     p = str(tmp_path / "edges.sqlite3")
+    _seed_roster(p, ["男主", "女甲", "女乙"])
     append_edge(_EDGE_AB, path=p)
     append_edge(_EDGE_AC, path=p)
     append_edge({**_EDGE_AB, "nature": "青梅竹马"}, path=p)  # 同一对 from→to 的第二条
@@ -203,6 +234,7 @@ def test_related_to_present_unions_across_multiple_present_characters():
 
 def test_remove_edge_tombstone_drops_key_on_load(tmp_path):
     p = str(tmp_path / "edges.sqlite3")
+    _seed_roster(p, ["男主", "女甲", "女乙"])
     append_edge(_EDGE_AB, path=p)
     append_edge(_EDGE_AC, path=p)
     remove_edge("男主", "女甲", path=p)
@@ -212,6 +244,7 @@ def test_remove_edge_tombstone_drops_key_on_load(tmp_path):
 
 def test_remove_edge_does_not_affect_reverse_direction(tmp_path):
     p = str(tmp_path / "edges.sqlite3")
+    _seed_roster(p, ["男主", "女甲"])
     append_edge(_EDGE_AB, path=p)
     append_edge({**_EDGE_AB, "from": "女甲", "to": "男主", "nature": "反向"}, path=p)
     remove_edge("男主", "女甲", path=p)
@@ -221,11 +254,19 @@ def test_remove_edge_does_not_affect_reverse_direction(tmp_path):
 
 def test_remove_edge_then_re_add_wins(tmp_path):
     p = str(tmp_path / "edges.sqlite3")
+    _seed_roster(p, ["男主", "女甲"])
     append_edge(_EDGE_AB, path=p)
     remove_edge("男主", "女甲", path=p)
     append_edge({**_EDGE_AB, "nature": "重新建立"}, path=p)
     g = load_graph(p)
     assert g["edges"]["男主→女甲"]["nature"] == "重新建立"
+
+
+def test_append_edge_raises_for_unknown_character(tmp_path):
+    p = str(tmp_path / "edges.sqlite3")
+    _seed_roster(p, ["男主"])  # "女甲" deliberately not seeded
+    with pytest.raises(ValueError, match="花名册"):
+        append_edge(_EDGE_AB, path=p)
 
 
 def test_iter_edges_by_key_keys_by_from_to():

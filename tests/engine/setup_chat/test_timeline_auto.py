@@ -6,6 +6,7 @@ from repo_test_helpers import seed_lore, seed_plot
 
 def _seed(tmp_path, monkeypatch, plot, *, scan_names: tuple[str, ...] = ("甲", "乙")):
     del tmp_path
+    seed_lore([{"name": n} for n in scan_names])
     seed_plot(plot)
     #missing_timeline_targets derives roster via timeline_seed._chapter_roster, which now scans
     #`description` via entity_index.scan_characters instead of reading a `characters` field.

@@ -13,9 +13,10 @@ def store(tmp_path, monkeypatch):
     s = SqliteStore(novel_id)
     s.save_lore([
         {"name": "甲", "gender": "female", "role": "lead"},
+        {"name": "乙", "gender": "female", "role": "lead"},
         {"gender": "unknown"},  # name-missing item preserved in raw
     ])
-    s.save_plot([{"chapter": 1, "title": "T", "stages": []}])
+    s.save_plot([{"chapter": 1, "title": "T", "stages": []}, {"chapter": 2, "title": "T2", "stages": []}])
     yield s
     s.close()
 
@@ -27,9 +28,10 @@ def test_get_lore(store):
 
 def test_list_lore_raw_preserves_order_and_unnamed(store):
     raw = store.list_lore_raw()
-    assert len(raw) == 2
+    assert len(raw) == 3
     assert raw[0]["name"] == "甲"
-    assert "name" not in raw[1]
+    assert raw[1]["name"] == "乙"
+    assert "name" not in raw[2]
 
 
 def test_save_lore_duplicate_name_does_not_abort_whole_write(store):
@@ -91,7 +93,9 @@ def test_evict_archive_from_deletes_persisted_rows_not_just_cache(store):
     store.save_archive("乙", 1, {"name": "乙", "chapter": 1})
     assert store.evict_archive_from(2) == 1
     row = store._conn.execute(
-        "SELECT 1 FROM character_archives WHERE name = '甲' AND chapter = 2",
+        "SELECT 1 FROM character_archives ca"
+        " JOIN lore_characters lc ON lc.id = ca.character_id"
+        " WHERE lc.name = '甲' AND ca.chapter = 2",
     ).fetchone()
     assert row is None
     # chapter 1 untouched
@@ -119,7 +123,9 @@ def test_evict_archive_for_deletes_persisted_rows_not_just_cache(store):
     store.save_archive("乙", 1, {"name": "乙", "chapter": 1})
     assert store.evict_archive_for("甲") == 2
     row = store._conn.execute(
-        "SELECT 1 FROM character_archives WHERE name = '甲'",
+        "SELECT 1 FROM character_archives ca"
+        " JOIN lore_characters lc ON lc.id = ca.character_id"
+        " WHERE lc.name = '甲'",
     ).fetchone()
     assert row is None
     assert store.get_archive("乙", 1) is not None
@@ -262,3 +268,69 @@ def test_sqlite_store_close_does_not_touch_cache_when_superseded(tmp_path, monke
     store.close()  # must NOT remove `replacement` from the cache
 
     assert get_connection(store._db_path) is replacement
+
+
+def test_ddl_creates_lore_characters_with_surrogate_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
+    s = SqliteStore("fk-novel")
+    try:
+        s._conn.execute(
+            "INSERT INTO lore_characters (name, data_json, seq) VALUES ('甲', '{}', 0)",
+        )
+        s._conn.commit()
+        row = s._conn.execute(
+            "SELECT id FROM lore_characters WHERE name = '甲'",
+        ).fetchone()
+        assert row is not None and isinstance(row[0], int)
+    finally:
+        s.close()
+
+
+def test_foreign_keys_pragma_is_on(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
+    s = SqliteStore("fk-novel-2")
+    try:
+        assert s._conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    finally:
+        s.close()
+
+
+def test_character_archives_rejects_unknown_character_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
+    import sqlite3
+    s = SqliteStore("fk-novel-3")
+    try:
+        s._conn.execute(
+            "INSERT INTO plot_chapters (chapter, data_json, seq) VALUES (1, '{}', 0)",
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            s._conn.execute(
+                "INSERT INTO character_archives (character_id, chapter, data_json)"
+                " VALUES (999, 1, '{}')",
+            )
+    finally:
+        s.close()
+
+
+def test_character_id_resolves_existing_name(store):
+    from repositories.sqlite_store import _character_id
+    cid = _character_id(store._conn, "甲")
+    assert isinstance(cid, int)
+
+
+def test_character_id_returns_none_for_unknown_name(store):
+    from repositories.sqlite_store import _character_id
+    assert _character_id(store._conn, "查无此人") is None
+
+
+def test_save_archive_raises_for_unknown_character(store):
+    with pytest.raises(ValueError, match="花名册"):
+        store.save_archive("查无此人", 1, {"name": "查无此人", "chapter": 1})
+
+
+def test_get_archive_returns_none_for_unknown_character_without_raising(store):
+    assert store.get_archive("查无此人", 1) is None
+
+
+def test_evict_archive_for_unknown_character_returns_zero(store):
+    assert store.evict_archive_for("查无此人") == 0

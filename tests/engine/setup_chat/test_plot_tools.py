@@ -69,6 +69,8 @@ def _stub_writer(monkeypatch, beats_by_stage):
 def _seed_archive(tmp_path, chapter: int, name: str) -> None:
     """Seed a persisted archive row in SQLite for cascade/clear assertions."""
     del tmp_path
+    from repo_test_helpers import seed_lore
+    seed_lore([{"name": name}])
     save_archive(name, chapter, {"name": name, "stages": {}})
 
 

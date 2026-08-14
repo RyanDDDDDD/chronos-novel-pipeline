@@ -9,6 +9,17 @@ def _char(name: str, **fields) -> dict:
     return {"name": name, "given_name": name, **fields}
 
 
+def _seed_edges_roster(db_path: str, *names: str) -> None:
+    from repositories.sqlite_store import get_connection
+    conn = get_connection(db_path)
+    for i, name in enumerate(names):
+        conn.execute(
+            "INSERT OR IGNORE INTO lore_characters (name, data_json, seq) VALUES (?, ?, ?)",
+            (name, json.dumps({"name": name}, ensure_ascii=False), i),
+        )
+    conn.commit()
+
+
 @pytest.mark.asyncio
 async def test_empty_roster_skips_llm_call():
     calls = []
@@ -39,6 +50,7 @@ async def test_appends_valid_edges_and_invalidates_cache(tmp_path, monkeypatch):
         ])
 
     existing = [_char("甲", role="师傅")]
+    _seed_edges_roster(p, "甲", "乙")
     out = await generate_edges_for_new_character(
         _char("乙", role="徒弟"), existing, call_llm=call_llm, edges_path=p,
     )
@@ -59,6 +71,7 @@ async def test_invalid_edge_dropped_valid_edge_kept(tmp_path):
             {"from": "甲", "to": "乙", "nature": "世仇", "from_ref_terms": [], "to_ref_terms": []},
         ])
 
+    _seed_edges_roster(p, "甲", "乙")
     out = await generate_edges_for_new_character(
         _char("乙"), [_char("甲")], call_llm=call_llm, edges_path=p,
     )
@@ -154,6 +167,7 @@ async def test_append_edge_oserror_skips_edge_and_never_raises(tmp_path, monkeyp
         "engine.setup.cast.incremental_relationship.append_edge", flaky_append,
     )
 
+    _seed_edges_roster(p, "甲", "乙")
     out = await generate_edges_for_new_character(
         _char("乙"), [_char("甲")], call_llm=call_llm, edges_path=p,
     )

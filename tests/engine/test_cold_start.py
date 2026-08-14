@@ -45,6 +45,7 @@ async def test_cold_start_prior_invokes_llm_and_writes_timeline(monkeypatch):
     from context.character_resolver import resolve_from
     from engine.archive.archive_hook import ArchiveDeltaContext
     from engine.archive.state_delta_call import run_state_delta_call
+    from repo_test_helpers import seed_lore, seed_plot
 
     rubrics = {"甲": {
         "投入": {"direction": -1, "levels": {"2": "理智旁观"}},
@@ -68,6 +69,8 @@ async def test_cold_start_prior_invokes_llm_and_writes_timeline(monkeypatch):
     )
     parsed = await run_state_delta_call(ctx)
     delta = parsed["1"]["delta"]
+    seed_lore([{"name": "女主丙", "role": "甲"}])
+    seed_plot([{"chapter": 5}])
     ctl.append_stage("女主丙", 5, 1, delta)
     prior = resolve_from(char, ctl.load_timeline("女主丙")["snapshots"], 5, 1)
     assert prior["sliders"] == {"投入": 2, "依恋": 3}

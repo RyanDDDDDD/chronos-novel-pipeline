@@ -179,22 +179,32 @@ A human-readable overview of the whole picture (injecting the architect skeleton
 
 def append_edge(edge: dict, path: str | None = None) -> None:
     """Append one edge row to relationship_edges (append-only log). Does not read existing
-    rows -- each call only inserts its own row, same concurrency posture as the old jsonl log."""
+    rows -- each call only inserts its own row, same concurrency posture as the old jsonl log.
+    Resolves from/to through lore_characters.id; raises if either name isn't in the roster --
+    safe because both production callers (tools.py's add_relationship_edge, incremental_
+    relationship.py) already run validate_edge() against the roster before calling this."""
     import json
     import os
 
-    from repositories.sqlite_store import get_connection
+    from repositories.sqlite_store import _character_id, get_connection
     from utils.paths import active_novel_id, novel_dir
 
     db_path = path or os.path.join(novel_dir(active_novel_id()), "chronos.sqlite3")
     conn = get_connection(db_path)
     frm, to = str(edge.get("from", "")).strip(), str(edge.get("to", "")).strip()
+    from_id = _character_id(conn, frm)
+    to_id = _character_id(conn, to)
+    if from_id is None:
+        raise ValueError(f"角色「{frm}」不在花名册中，无法写入关系边。")
+    if to_id is None:
+        raise ValueError(f"角色「{to}」不在花名册中，无法写入关系边。")
     conn.execute(
-        "INSERT INTO relationship_edges (from_name, to_name, nature, relationship_anchor,"
-        " from_ref_terms_json, to_ref_terms_json, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO relationship_edges (from_character_id, to_character_id, nature,"
+        " relationship_anchor, from_ref_terms_json, to_ref_terms_json, deleted)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
-            frm,
-            to,
+            from_id,
+            to_id,
             str(edge.get("nature", "")),
             str(edge.get("relationship_anchor", "")),
             json.dumps(clean_ref_terms(edge.get("from_ref_terms"))),
@@ -206,27 +216,34 @@ def append_edge(edge: dict, path: str | None = None) -> None:
 
 
 def load_graph(path: str | None = None) -> dict:
-    """Read relationship_edges rows, fold by "{from}→{to}" into {"groups": {}, "edges": {...}}.
+    """Read relationship_edges rows, fold by "{from}→{to}" into {"groups": {}, "edges": {}}.
     Later rows override earlier ones for the same key; deleted=1 tombstones drop the key.
-    Missing db file → empty graph via get_connection auto-create; sqlite3.Error → empty graph."""
+    Missing db file → empty graph via get_connection auto-create; sqlite3.Error → empty graph.
+    A character_id that no longer resolves to a name (lore row deleted after the edge was
+    written, before cleanup ran) is skipped rather than raising -- same "already gone, nothing
+    to show" posture as the rest of this migration's read paths."""
     import json
     import os
     import sqlite3
 
-    from repositories.sqlite_store import get_connection
+    from repositories.sqlite_store import _character_name, get_connection
     from utils.paths import active_novel_id, novel_dir
 
     db_path = path or os.path.join(novel_dir(active_novel_id()), "chronos.sqlite3")
     try:
         conn = get_connection(db_path)
         rows = conn.execute(
-            "SELECT from_name, to_name, nature, relationship_anchor, from_ref_terms_json,"
-            " to_ref_terms_json, deleted FROM relationship_edges ORDER BY id",
+            "SELECT from_character_id, to_character_id, nature, relationship_anchor,"
+            " from_ref_terms_json, to_ref_terms_json, deleted FROM relationship_edges ORDER BY id",
         ).fetchall()
     except sqlite3.Error:
         return empty_graph()
     edges: dict[str, dict] = {}
-    for frm, to, nature, anchor, from_terms, to_terms, deleted in rows:
+    for from_id, to_id, nature, anchor, from_terms, to_terms, deleted in rows:
+        frm = _character_name(conn, from_id)
+        to = _character_name(conn, to_id)
+        if frm is None or to is None:
+            continue
         key = f"{frm}→{to}"
         if deleted:
             edges.pop(key, None)
