@@ -137,6 +137,40 @@ def test_resolve_related_cast_overlay_defaults_to_empty_when_omitted(monkeypatch
     assert resolve_related_cast({"小明"}) == []
 
 
+def test_resolve_related_cast_ranks_by_present_edge_count_and_caps_at_five(monkeypatch):
+    """Seven candidates connected to the present cast; only the top 5 by how many present
+    characters they're each tied to should survive, alphabetical among ties."""
+    from engine.story_sandbox.cast import resolve_related_cast
+
+    def _edge(frm, to):
+        return {"from": frm, "to": to, "nature": "", "relationship_anchor": "",
+                "from_ref_terms": [], "to_ref_terms": []}
+
+    edges = {}
+    # 丙: 3 edges to present (甲, 乙, 丁) -> highest count, should survive.
+    for present_name in ("甲", "乙", "丁"):
+        edges[f"{present_name}→丙"] = _edge(present_name, "丙")
+    # 丁 also present, tied to 甲 -- excluded from candidates since 丁 is present.
+    edges["甲→丁"] = _edge("甲", "丁")
+    # 戊, 己: 2 edges each -> next tier.
+    for present_name in ("甲", "乙"):
+        edges[f"{present_name}→戊"] = _edge(present_name, "戊")
+        edges[f"{present_name}→己"] = _edge(present_name, "己")
+    # 庚, 辛, 壬, 癸: 1 edge each -> lowest tier, only some fit in the remaining slots.
+    for name in ("庚", "辛", "壬", "癸"):
+        edges[f"甲→{name}"] = _edge("甲", name)
+
+    monkeypatch.setattr(
+        "engine.setup.cast.relationship_graph.load_graph",
+        lambda: {"groups": {}, "edges": edges},
+    )
+    result = resolve_related_cast({"甲", "乙", "丁"})
+    assert len(result) == 5
+    assert "丙" in result  # count=3, must survive
+    assert "戊" in result and "己" in result  # count=2, must survive
+    assert result == sorted(result)  # final order is alphabetical, not by score
+
+
 def test_render_related_cast_block_forbids_dialogue_and_actions(monkeypatch):
     from engine.story_sandbox.cast import render_related_cast_block
 
