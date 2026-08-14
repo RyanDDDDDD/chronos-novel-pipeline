@@ -468,16 +468,6 @@ export default function ServiceConfigPage() {
               }))}
             />
           </Field>
-
-          <Field label="启动时检测检索连通性" hint="仅影响应用启动时是否自动检测检索服务连通性（会消耗一次真实检索配额，如百度千帆每日限 100 次，默认关闭）；保存设置后始终会检测一次，不受此开关影响。对应 api.search_ping_enabled。">
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-              <Switch
-                checked={api.search_ping_enabled ?? false}
-                onCheckedChange={(v) => patch((c) => ({ ...c, api: { ...(c.api ?? {}), search_ping_enabled: v } }))}
-              />
-              应用启动时自动检测检索服务连通性
-            </label>
-          </Field>
         </Section>
 
         <Section

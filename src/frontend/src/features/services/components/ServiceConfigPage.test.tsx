@@ -362,14 +362,7 @@ describe('联网检索 provider 切换', () => {
   })
 })
 
-describe('search_ping_enabled + 保存后触发连通性检测', () => {
-  it('渲染 search_ping_enabled switch，默认未勾选', async () => {
-    renderPage()
-    await waitFor(() => expect(screen.getByText('启动时检测检索连通性')).toBeTruthy())
-    const pingSwitch = screen.getByRole('switch', { name: '应用启动时自动检测检索服务连通性' })
-    expect(pingSwitch.getAttribute('aria-checked')).toBe('false')
-  })
-
+describe('保存后触发连通性检测', () => {
   it('保存成功后拉取 service-status（连通性检测由后端 PUT /api/config 触发）', async () => {
     const calls: string[] = []
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {

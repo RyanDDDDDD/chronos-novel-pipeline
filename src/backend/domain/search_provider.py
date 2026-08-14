@@ -146,13 +146,17 @@ class BaiduQianfanSearchProvider(SearchProvider):
         return SearchResult(answer=None, hits=hits)
 
 
+def search_provider_kind(cfg: dict) -> SearchProviderKind:
+    api_cfg = cfg.get("api") or {}
+    return SearchProviderKind(api_cfg.get("search_provider") or SearchProviderKind.TAVILY)
+
+
 def build_search_provider(cfg: dict) -> SearchProvider:
     """Construct the configured search provider. Raises ValueError with a
     user-facing Chinese message when the selected provider's key is missing."""
     api_cfg = cfg.get("api") or {}
     top_k = api_cfg.get("search_top_k", 5)
-    raw_kind = api_cfg.get("search_provider") or SearchProviderKind.TAVILY
-    kind = SearchProviderKind(raw_kind)
+    kind = search_provider_kind(cfg)
 
     if kind == SearchProviderKind.TAVILY:
         key = api_cfg.get("tavily_api_key", "")
