@@ -1,6 +1,7 @@
 """Per-dimension setup-chat tools for world_bible (scalars + list-entry CRUD)."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from langchain_core.tools import BaseTool, StructuredTool
@@ -26,8 +27,10 @@ async def _commit_world_write(
     *,
     changed_field: str,
     success_title: str,
-    body: str = "",
+    render_body: Callable[[], str],
 ) -> str:
+    """Persist first, then render the preview — render_body must reflect post-write state
+    (e.g. re-reading the store), so it cannot be evaluated before persist_world_doc runs."""
     from utils.paths import active_novel_id
 
     from engine.setup_chat.world_background_review import cancel_active_world_review_or_fix
@@ -37,7 +40,7 @@ async def _commit_world_write(
     if not saved:
         return err
     schedule_world_quality_review()
-    return format_tool_done(success_title, body)
+    return format_tool_done(success_title, render_body())
 
 
 def _make_scalar_tools(
@@ -55,7 +58,7 @@ def _make_scalar_tools(
             doc,
             changed_field=field,
             success_title=f"已写入{label}。",
-            body=str(doc.get(field, "")),
+            render_body=lambda: str(doc.get(field, "")),
         )
 
     async def refine_fn(**kwargs: Any) -> str:
@@ -67,7 +70,7 @@ def _make_scalar_tools(
             doc,
             changed_field=field,
             success_title=f"已更新{label}。",
-            body=str(doc.get(field, "")),
+            render_body=lambda: str(doc.get(field, "")),
         )
 
     set_tool = StructuredTool.from_function(
@@ -106,7 +109,7 @@ def _make_list_tools(
             doc,
             changed_field=field,
             success_title=f"已添加{label}「{args.name}」。",
-            body=wo.render_list_field(field),
+            render_body=lambda: wo.render_list_field(field),
         )
 
     async def edit_fn(**kwargs: Any) -> str:
@@ -124,7 +127,7 @@ def _make_list_tools(
             doc,
             changed_field=field,
             success_title=f"已更新{label}「{args.name}」。",
-            body=wo.render_list_field(field),
+            render_body=lambda: wo.render_list_field(field),
         )
 
     async def delete_fn(**kwargs: Any) -> str:
