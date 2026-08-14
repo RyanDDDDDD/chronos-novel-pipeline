@@ -8,13 +8,18 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 _SYSTEM_PROMPT = (
     "You are a prompt engineer for text-to-image models. Convert the character's visible "
-    "appearance fields below into an English prompt suitable for an anime-style SDXL/FLUX "
-    "model: comma-separated keyword phrases. No explanations, no Chinese, no full sentences, "
-    "no quotes. "
+    "appearance fields below into an English SDXL/FLUX-style prompt: comma-separated keyword "
+    "phrases. No explanations, no Chinese, no full sentences, no quotes. "
+    "Never include an art style, medium, or rendering technique tag of any kind (examples to "
+    "avoid: 'anime style', 'manga', 'realistic', 'photorealistic', '3d render', 'oil painting', "
+    "'watercolor', 'comic style', 'semi-realistic'). Art style is chosen by a separate, "
+    "independent layer downstream and must never be baked into this output -- describe only "
+    "physical appearance, body proportions, and clothing/accessories (pure visual facts), "
+    "never the rendering style they should be drawn in. "
     "Never include a specific or numeric age in the output (e.g. '17yo', '16 years old', "
     "'age: 15'), even if the source fields mention one -- age is not a visual/drawable "
     "trait and such tags risk tripping third-party image platforms' content filters. "
-    "Describe body proportions and style only, with no age label of any kind. "
+    "Describe body proportions only, with no age label of any kind. "
     "The source fields often describe this character relative to a sibling, twin, or other "
     "named character (e.g. 'softer build than her twin sister', 'bigger than her older "
     "sister') for narrative flavor -- this is a single-character portrait, not a group "
@@ -22,7 +27,12 @@ _SYSTEM_PROMPT = (
     "character alone (e.g. 'softer build than her twin sister' -> 'slender, delicate "
     "build'). Never name, reference, or imply a second person in the output, and never "
     "emit multi-subject tags like '2girls' or 'sisters' -- the output must describe "
-    "exactly one person."
+    "exactly one person.\n\n"
+    "Match the shape of this example (format only -- do not reuse its wording unless it "
+    "genuinely matches the source fields):\n"
+    "female, solo, tall slender build, fair skin, long wavy chestnut hair, sharp amber eyes, "
+    "delicate oval face, calm composed expression, fitted navy trench coat, leather gloves, "
+    "knee-high boots, silver chain necklace"
 )
 
 

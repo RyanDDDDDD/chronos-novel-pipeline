@@ -99,6 +99,29 @@ async def test_extract_visual_tags_system_prompt_forbids_multi_person_leak(monke
 
 
 @pytest.mark.asyncio
+async def test_extract_visual_tags_system_prompt_forbids_style_tags(monkeypatch):
+    """Regression for the 2026-08-15 style-leak bug: the system prompt used to literally
+    say 'suitable for an anime-style SDXL/FLUX model', causing the tag LLM to bake an
+    explicit 'anime style' tag into portrait_visual_tags. That competes with the separate,
+    user-facing art-style preset layer (media.portrait.style_presets) and skews the final
+    generated portrait toward anime regardless of the chosen preset. See
+    media.portrait.visual_tags._SYSTEM_PROMPT."""
+    from context import content_packs as cp
+    from media.portrait import visual_tags
+
+    monkeypatch.setattr(cp, "active_portrait_directive", lambda: None)
+    fake_llm = _FakeLLM("female, solo, silver hair, red eyes")
+    monkeypatch.setattr("llm.factory.get_cloud_llm", lambda: fake_llm)
+
+    char = {"gender": "female", "physique": {"体型": "娇小"}, "clothing_dna": {}}
+    await visual_tags.extract_visual_tags(char)
+
+    system_content = fake_llm.calls[0][0].content
+    assert "anime-style" not in system_content.lower()
+    assert "never include an art style" in system_content.lower()
+
+
+@pytest.mark.asyncio
 async def test_extract_visual_tags_appends_directive_when_active(monkeypatch):
     from context import content_packs as cp
     from media.portrait import visual_tags
