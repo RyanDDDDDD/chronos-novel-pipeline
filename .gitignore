@@ -82,3 +82,10 @@ htmlcov/
 *.sqlite
 *.sqlite3
 
+# 私有仓库遗留的内部笔记（旧 checkout 复用到本仓库时残留，不进 git）
+/CLAUDE.md
+/docs/MAINTENANCE_GUIDE.md
+/docs/notes/
+/docs/spec/
+/docs/superpowers/
+
