@@ -12,6 +12,7 @@ vi.mock('@/shared/utils/novels', () => ({
     { id: 'n2', name: 'N2', active: false },
   ]),
   createNovel: vi.fn(), switchNovel: vi.fn(), renameNovel: vi.fn(), deleteNovel: vi.fn(),
+  filterNovelsByName: (novels: { id: string }[]) => novels,
 }))
 vi.mock('@/features/pipeline/components/PipelineWorkflowConfigView', () => ({ default: () => <div data-testid="author-loop-config" /> }))
 

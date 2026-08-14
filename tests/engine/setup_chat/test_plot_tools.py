@@ -895,11 +895,11 @@ async def test_delete_chapter_core_removes_chapter_and_cascades_archives(monkeyp
     ok, msg, detail = await _delete_chapter_core(1)
     assert ok is True
     assert "已删除第 1 章" in msg
-    assert "第2章" in msg  # advisory about cascaded archive invalidation
+    assert "顺延" in msg
 
     remaining = _plot_raw()
-    assert [c["chapter"] for c in remaining] == [2]
+    assert [c["chapter"] for c in remaining] == [1]
+    assert remaining[0]["title"] == "第二章"
     assert not manuscript_dir.exists()
     assert detail["chapter"] == 1
-    assert detail["cleared_archive_chapters"] == [1, 2]
-    assert detail["cleared_archive_characters"] == ["甲"]
+    assert "rescoped_characters" in detail

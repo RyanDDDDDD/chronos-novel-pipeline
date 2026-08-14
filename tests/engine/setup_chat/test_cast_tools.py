@@ -512,7 +512,8 @@ async def test_delete_character_core_cascades_chapter_mentioning_name(monkeypatc
     assert "第1章" in msg
 
     remaining_plot = _plot_raw()
-    assert [c["chapter"] for c in remaining_plot] == [2]
+    assert [c["chapter"] for c in remaining_plot] == [1]
+    assert remaining_plot[0]["title"] == "第二章"
     saved_roster = lore_raw()
     assert {c["name"] for c in saved_roster} == {"乙"}
 

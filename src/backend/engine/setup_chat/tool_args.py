@@ -372,6 +372,15 @@ class GenerateOneChapterArgs(PlotChapterArgs):
     chapter_index: int = Field(ge=1, description="章号（1 起）")
 
 
+class InsertChapterArgs(PlotChapterArgs):
+    """Insert one brand-new chapter immediately after an existing chapter (or at the very
+    front, if after_chapter=0), shifting every later chapter's number up by one. Unlike
+    generate_one_chapter, this never replaces an existing chapter's content -- it only ever
+    creates a new one."""
+
+    after_chapter: int = Field(ge=0, description="插入到第几章之后（0=插到最前面）")
+
+
 class PatchOp(StrEnum):
     """
 Operation type of partial editing of chapter outline."""

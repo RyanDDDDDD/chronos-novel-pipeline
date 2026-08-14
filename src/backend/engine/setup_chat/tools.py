@@ -31,6 +31,7 @@ from engine.setup_chat.tool_args import (
     DeleteChapterArgs,
     DeleteCharacterArgs,
     GenerateOneChapterArgs,
+    InsertChapterArgs,
     LoadSkillArgs,
     PatchChapterArgs,
     PatchOp,
@@ -516,19 +517,31 @@ async def edit_character(
 
 
 async def _delete_chapter_core(chapter: int) -> tuple[bool, str, dict]:
-    """Delete one chapter entirely: plot entry + manuscript/temp/archives on disk. Reuses
-    delete_archives_from (same "chapter N onward" invalidation delete_chapter's description-edit
-    sibling _clear_archives_from already relies on) because a resolved archive for chapter N+1
-    is built on top of chapter N's resolved state -- deleting chapter N makes N+1's archive stale
-    even though chapter N+1's plot entry itself is untouched."""
+    """Delete one chapter entirely: plot entry + manuscript/temp/archives on disk, then shift
+    every later chapter down by one (mirror of insert_chapter). Only the deleted chapter's own
+    roster gets rescheduled for re-derivation -- a later chapter's characters who never
+    appeared in the deleted chapter keep their archive content untouched; they're only
+    relabeled to their new chapter number by shift_chapters."""
     from repositories import get_plot_repo
 
     chapters = get_plot_repo().list_raw()
     if not any(isinstance(c, dict) and c.get("chapter") == chapter for c in chapters):
         return False, f"未找到第 {chapter} 章。", {}
 
-    from engine.archive.archive_view import delete_archives_from
-    archive_result = delete_archives_from(chapter)
+    from engine.setup_chat.timeline_seed import _chapter_roster
+    roster = _chapter_roster(chapter)
+
+    from repositories import get_archive_repo
+    get_archive_repo().evict_from(chapter)
+    # timeline_snapshots rows for this exact chapter, across every character who appeared in
+    # it: truncate_from(name, chapter) would also remove that character's LATER chapters,
+    # which is wrong here (delete-then-shift must only clear the deleted chapter's own delta;
+    # later chapters for the same character get relabeled by shift_chapters below, not wiped).
+    import context.character_timeline as character_timeline
+    for name in roster:
+        for snap in character_timeline.load_timeline(name)["snapshots"]:
+            if snap["chapter"] == chapter:
+                character_timeline.remove_stage(name, chapter, snap["stage"])
 
     new_chapters = [c for c in chapters if not (isinstance(c, dict) and c.get("chapter") == chapter)]
     try:
@@ -544,20 +557,20 @@ async def _delete_chapter_core(chapter: int) -> tuple[bool, str, dict]:
     if os.path.isdir(cdir):
         shutil.rmtree(cdir)
 
-    cleared_chapters = archive_result["deleted"]["chapters"]
-    cleared_characters = archive_result["deleted"]["characters"]
-    detail = {
-        "chapter": chapter,
-        "cleared_archive_chapters": cleared_chapters,
-        "cleared_archive_characters": cleared_characters,
-    }
-    msg = f"已删除第 {chapter} 章（大纲/骨架/正文/角色档案）。"
-    extra = sorted(c for c in cleared_chapters if c != chapter)
-    if extra:
-        msg += (
-            f" 以下后续已构建章节的角色档案因基线失效被连带清空：{'、'.join(f'第{c}章' for c in extra)}"
-            f"（{'、'.join(cleared_characters)}），需重新调用 write_character_archive 逐章重建。"
-        )
+    from engine.setup_chat.chapter_shift import ChapterBusyError, shift_chapters
+    try:
+        await shift_chapters(chapter + 1, -1)
+    except ChapterBusyError as exc:
+        return False, str(exc), {}
+
+    if roster:
+        from engine.setup_chat.timeline_auto import schedule_timeline_cascade
+        schedule_timeline_cascade(chapter, names=roster)
+
+    detail = {"chapter": chapter, "rescoped_characters": roster}
+    msg = f"已删除第 {chapter} 章（大纲/骨架/正文/角色档案），后续章节已顺延前移一位。"
+    if roster:
+        msg += f" 涉及角色（{', '.join(roster)}）的后续档案将重新推演；未涉及的角色档案原样保留，仅坐标随行迁移。"
     return True, msg, detail
 
 
@@ -597,7 +610,8 @@ async def _delete_character_core(name: str) -> tuple[bool, str, dict]:
             affected_chapters.append(ch["chapter"])
 
     deleted_chapters: list[int] = []
-    for ch_num in sorted(affected_chapters):
+    # Highest-first so each delete's shift-down cannot renumber a still-pending target.
+    for ch_num in sorted(affected_chapters, reverse=True):
         ok, _msg, _detail = await _delete_chapter_core(ch_num)
         if ok:
             deleted_chapters.append(ch_num)
@@ -764,6 +778,62 @@ Write/replace the [Chapter Outline] of a certain chapter (complete chapter: titl
     返回文案会附带"剩余 N 章待创建"提示；替换既有章或已达标/超额则不提示。"""
     _ok, msg = await _generate_one_chapter_impl(chapter_index, title, core_xp, stages)
     return msg
+
+
+@tool(args_schema=InsertChapterArgs)
+async def insert_chapter(
+    after_chapter: int,
+    title: str,
+    core_xp: list[str],
+    stages: list,
+) -> str:
+    """在第 after_chapter 章之后插入一个全新章节（after_chapter=0 表示插到全书最前面），后面
+    每一章的章号自动 +1（大纲/角色档案/正文/沙盒记录/磁盘目录全部随行）。跟 generate_one_chapter
+    不同：这个工具只会新增章节，绝不会替换已有章节的内容。挪号是纯机械操作，不产生任何 LLM
+    调用；只有新插入这一章里实际出场的角色，才会被排队重新推演角色档案——没在这章出现过的角色，
+    档案原样保留，只是坐标随行搬迁。"""
+    from repositories import get_plot_repo
+
+    from engine.setup_chat.chapter_shift import ChapterBusyError, shift_chapters
+    from engine.setup_chat.timeline_auto import schedule_timeline_cascade
+    from engine.setup_chat.timeline_seed import _chapter_roster
+    from engine.setup_chat.tool_args import load_plot_grounding, validate_plot_chapters
+
+    new_chapter_index = after_chapter + 1
+    args = InsertChapterArgs.model_validate({
+        "after_chapter": after_chapter, "title": title, "core_xp": core_xp, "stages": stages,
+    })
+    built_chapter = args.to_chapter(new_chapter_index)
+
+    g = load_plot_grounding()
+    errs = validate_plot_chapters([built_chapter], character_names=g.get("character_names", []))
+    if errs:
+        return "校验未通过，未写入：\n" + "\n".join(f"- {e}" for e in errs)
+
+    try:
+        await shift_chapters(new_chapter_index, 1)
+    except ChapterBusyError as exc:
+        return str(exc)
+
+    chapter = _clear_skeleton(built_chapter)
+    chapters = get_plot_repo().list_raw()
+    chapters.append(chapter)
+    try:
+        get_plot_repo().save_all(chapters)
+    except OSError as exc:
+        return f"写盘失败：{exc}"
+
+    roster = _chapter_roster(new_chapter_index)
+    schedule_timeline_cascade(new_chapter_index, names=roster)
+
+    tail = "\n新章尚无分拍底稿——写作前请先扩写骨架（read_skeleton_seed → write_chapter_skeleton）。"
+    if roster:
+        tail += f"\n涉及角色（{', '.join(roster)}）的后续已构建章节档案将重新推演；未涉及的角色档案原样保留。"
+    return format_tool_done(
+        f"已插入第 {new_chapter_index} 章，原第 {new_chapter_index}..{new_chapter_index + len(chapters) - 1} "
+        f"章及以后依次顺延一位。{tail}",
+        render_chapter_chat(chapter, new_chapter_index),
+    )
 
 
 @tool(args_schema=AutoBuildSetupArgs)
@@ -2161,10 +2231,10 @@ async def delete_character(name: str) -> str:
 
 @tool(args_schema=DeleteChapterArgs)
 async def delete_chapter(chapter: int) -> str:
-    """删除一整章：大纲/骨架条目 + 已生成的正文成稿 + 该章所有角色档案；同时该章之后已构建
-    章节的角色档案会因基线失效被连带清空（需重新调用 write_character_archive 逐章重建，工具
-    返回值会列出受影响的章节和角色）。不可逆，删除前建议先用 read_chapter_skeleton /
-    read_author_manuscript 确认。"""
+    """删除一整章：大纲/骨架条目 + 已生成的正文成稿 + 该章所有角色档案；后续每一章的章号自动
+    -1（正文/角色档案/沙盒记录/磁盘目录全部随行）。只有这一章里实际出场过的角色，其后续章节
+    档案才会被重新推演——没在这章出现过的角色，档案原样保留，只是坐标随行迁移。不可逆，删除前
+    建议先用 read_chapter_skeleton / read_author_manuscript 确认。"""
     _ok, msg, _detail = await _delete_chapter_core(chapter)
     return msg
 

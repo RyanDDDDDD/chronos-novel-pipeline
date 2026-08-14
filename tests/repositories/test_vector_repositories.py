@@ -467,3 +467,32 @@ def test_query_missing_mention_count_defaults_to_one(monkeypatch, tmp_path):
     r = ResearchRepository()
     hits = r.query("老数据没有频次字段", top_k=3)
     assert hits[0].mention_count == 1
+
+
+@pytest.mark.asyncio
+async def test_shift_chapter_moves_fragment_same_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
+    from utils.paths import use_novel
+    with use_novel("shift-vec-novel"):
+        from repositories import get_sandbox_vector_memory_repo
+        repo = get_sandbox_vector_memory_repo()
+        await repo.archive([{
+            "id": "e1", "chapter": 2, "turn_index": 0, "summary": "甲登场",
+            "characters": ["甲"], "entities": [],
+        }])
+        await repo.shift_chapter(2, 1)
+
+        hits = repo.query("甲登场", top_k=5)
+        assert len(hits) == 1
+        assert hits[0].id == "e1"
+        assert hits[0].chapter == 3
+
+
+@pytest.mark.asyncio
+async def test_shift_chapter_no_op_when_nothing_archived(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
+    from utils.paths import use_novel
+    with use_novel("shift-vec-novel-2"):
+        from repositories import get_sandbox_vector_memory_repo
+        repo = get_sandbox_vector_memory_repo()
+        await repo.shift_chapter(9, 1)  # must not raise
