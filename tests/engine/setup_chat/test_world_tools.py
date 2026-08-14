@@ -76,6 +76,10 @@ async def test_edit_world_faction(monkeypatch):
     edit_tool = next(t for t in build_world_dimension_tools() if t.name == "edit_world_faction")
     out = await edit_tool.ainvoke({"name": "甲帮", "desc": "新描述"})
     assert "已更新" in out
+    # Regression: the returned preview must reflect the post-write state, not a snapshot
+    # read before persist_world_doc ran (see world_tools._commit_world_write render_body).
+    assert "新描述" in out
+    assert "旧描述" not in out
     saved = get_world()
     assert saved is not None
     assert saved["factions"][0]["desc"] == "新描述"
