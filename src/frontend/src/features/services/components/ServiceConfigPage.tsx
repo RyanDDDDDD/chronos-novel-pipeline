@@ -341,7 +341,6 @@ export default function ServiceConfigPage() {
 
   const llm = cfg.llm ?? {}
   const api = cfg.api ?? {}
-  const paths = cfg.paths ?? {}
   const novels = cfg.novels ?? {}
 
   return (
@@ -832,7 +831,10 @@ export default function ServiceConfigPage() {
                           />
                           <NovitaModelPicker
                             value={editingImageCustomModel.model}
-                            onChange={(v, baseModel) => setEditingImageCustomModel({ ...editingImageCustomModel, model: v, base_model: baseModel })}
+                            onChange={(v, baseModel) => setEditingImageCustomModel(prev => (prev && ({
+                              ...prev, model: v, base_model: baseModel,
+                              label: (prev.label === '' || prev.label === prev.model) ? v : prev.label,
+                            })))}
                           />
                           <div className="flex gap-2">
                             <Button
@@ -882,7 +884,10 @@ export default function ServiceConfigPage() {
                       />
                       <NovitaModelPicker
                         value={editingImageCustomModel.model}
-                        onChange={(v, baseModel) => setEditingImageCustomModel({ ...editingImageCustomModel, model: v, base_model: baseModel })}
+                        onChange={(v, baseModel) => setEditingImageCustomModel(prev => (prev && ({
+                          ...prev, model: v, base_model: baseModel,
+                          label: (prev.label === '' || prev.label === prev.model) ? v : prev.label,
+                        })))}
                       />
                       <div className="flex gap-2">
                         <Button
@@ -929,34 +934,6 @@ export default function ServiceConfigPage() {
             </div>
           )}
         </section>
-
-        <Section title="路径（高级）" desc="通常不用改；用于自定义目录结构/manifest 默认路径。">
-          <Field label="章节目录" hint="章节 JSON 存放目录。对应 paths.chapters_dir。">
-            <Input
-              aria-label="章节目录"
-              className="w-full text-xs font-mono"
-              value={paths.chapters_dir ?? ''}
-              onChange={(e) => patch((c) => ({ ...c, paths: { ...(c.paths ?? {}), chapters_dir: e.target.value } }))}
-            />
-          </Field>
-          <Field label="Agent 包目录" hint="Agent 定义包根目录。对应 paths.agents_dir。">
-            <Input
-              aria-label="Agent 包目录"
-              className="w-full text-xs font-mono"
-              value={paths.agents_dir ?? ''}
-              onChange={(e) => patch((c) => ({ ...c, paths: { ...(c.paths ?? {}), agents_dir: e.target.value } }))}
-            />
-          </Field>
-          <Field label="Manifest 路径" hint="流水线 manifest 默认路径。对应 paths.manifest_path。">
-            <Input
-              aria-label="Manifest 路径"
-              className="w-full text-xs font-mono"
-              value={paths.manifest_path ?? ''}
-              onChange={(e) => patch((c) => ({ ...c, paths: { ...(c.paths ?? {}), manifest_path: e.target.value } }))}
-            />
-          </Field>
-          <div className="hidden md:block" />
-        </Section>
 
         {showRaw && (
           <section className="border border-slate-200 rounded-lg bg-white p-4 space-y-2">

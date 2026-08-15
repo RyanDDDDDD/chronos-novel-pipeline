@@ -303,6 +303,78 @@ describe('ServiceConfigPage 自定义模型表格', () => {
     expect(entry.base_model).toBe('Pony')
   })
 
+  it('选中 Novita checkpoint 时显示名默认自动同步为模型名', async () => {
+    let savedConfig: { config: { llm: { custom_models: { model: string; label: string }[] } } } | null = null
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config' && (!init || init.method === undefined)) {
+        return { ok: true, json: async () => ({ config: { llm: { custom_models: [] } } }) }
+      }
+      if (url === '/api/config' && init?.method === 'PUT') {
+        savedConfig = JSON.parse(String(init.body))
+        return { ok: true, json: async () => savedConfig }
+      }
+      if (url === '/api/llm/catalog') {
+        return { ok: true, json: async () => ({ cloud_models: [] }) }
+      }
+      if (url === '/api/image-gen/novita-models') {
+        return {
+          ok: true,
+          json: async () => ({
+            models: ['pony-v6.safetensors'],
+            base_models: { 'pony-v6.safetensors': 'Pony' },
+          }),
+        }
+      }
+      return { ok: true, json: async () => ({}) }
+    }))
+
+    renderPage()
+    fireEvent.click(await screen.findByText('生图模型'))
+    fireEvent.click(await screen.findByRole('button', { name: '添加生图模型' }))
+    fireEvent.click(await screen.findByText('pony-v6.safetensors'))
+    expect((screen.getByLabelText('显示名') as HTMLInputElement).value).toBe('pony-v6.safetensors')
+    fireEvent.click(screen.getByRole('button', { name: '保存此模型' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(savedConfig).not.toBeNull())
+
+    const entry = savedConfig!.config.llm.custom_models.find(m => m.model === 'pony-v6.safetensors')
+    expect(entry?.label).toBe('pony-v6.safetensors')
+  })
+
+  it('手动改过显示名后再切换模型不会被自动覆盖', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config' && (!init || init.method === undefined)) {
+        return { ok: true, json: async () => ({ config: { llm: { custom_models: [] } } }) }
+      }
+      if (url === '/api/config' && init?.method === 'PUT') {
+        return { ok: true, json: async () => ({ config: {} }) }
+      }
+      if (url === '/api/llm/catalog') {
+        return { ok: true, json: async () => ({ cloud_models: [] }) }
+      }
+      if (url === '/api/image-gen/novita-models') {
+        return {
+          ok: true,
+          json: async () => ({
+            models: ['pony-v6.safetensors', 'flux-1.safetensors'],
+            base_models: { 'pony-v6.safetensors': 'Pony', 'flux-1.safetensors': 'Flux' },
+          }),
+        }
+      }
+      return { ok: true, json: async () => ({}) }
+    }))
+
+    renderPage()
+    fireEvent.click(await screen.findByText('生图模型'))
+    fireEvent.click(await screen.findByRole('button', { name: '添加生图模型' }))
+    fireEvent.click(await screen.findByText('pony-v6.safetensors'))
+    fireEvent.change(screen.getByLabelText('显示名'), { target: { value: '我的自定义名称' } })
+    fireEvent.click(await screen.findByText('flux-1.safetensors'))
+
+    expect((screen.getByLabelText('显示名') as HTMLInputElement).value).toBe('我的自定义名称')
+  })
+
   it('删除一条自定义模型后从列表消失', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/config') {
