@@ -321,6 +321,50 @@ async def test_author_loop_terminal_event_does_not_prune_unrelated_event_types()
 
 
 @pytest.mark.asyncio
+async def test_portrait_generation_done_not_buffered_or_replayed():
+    """portrait_generation_done: current portrait state is always re-derivable via the cast
+    list refetch (see listeners.ts, which invalidates the setup/cast query on this exact
+    event), same reasoning as author_loop_done et al."""
+    gw = Gateway()
+    ws1 = _FakeWS()
+    await gw.add_client(ws1)
+    await gw.broadcast({"type": "portrait_generation_done", "novel_id": "novel-A", "character": "甲"})
+    assert gw._buffer == []
+    ws2 = _FakeWS()
+    await gw.add_client(ws2)
+    assert ws2.sent == []
+
+
+@pytest.mark.asyncio
+async def test_portrait_generation_done_prunes_this_character_own_started_event():
+    """Regression: portrait_generation_started/done were never excluded from the buffer at
+    all and nothing ever pruned them, so every character portrait ever generated in a
+    session's lifetime stayed buffered indefinitely."""
+    gw = Gateway()
+    ws1 = _FakeWS()
+    await gw.add_client(ws1)
+    await gw.broadcast({"type": "portrait_generation_started", "novel_id": "novel-A", "character": "甲"})
+    await gw.broadcast({"type": "portrait_generation_done", "novel_id": "novel-A", "character": "甲"})
+    assert gw._buffer == []
+    ws2 = _FakeWS()
+    await gw.add_client(ws2)
+    assert ws2.sent == []
+
+
+@pytest.mark.asyncio
+async def test_portrait_generation_done_only_prunes_same_character():
+    """A finished character's prune must not touch a sibling character's still-in-flight
+    started event, even within the same novel (concurrent/batch regeneration)."""
+    gw = Gateway()
+    ws1 = _FakeWS()
+    await gw.add_client(ws1)
+    await gw.broadcast({"type": "portrait_generation_started", "novel_id": "novel-A", "character": "乙"})
+    await gw.broadcast({"type": "portrait_generation_done", "novel_id": "novel-A", "character": "甲"})
+    assert [e["type"] for e in gw._buffer] == ["portrait_generation_started"]
+    assert gw._buffer[0]["character"] == "乙"
+
+
+@pytest.mark.asyncio
 async def test_lifecycle_event_delivered_regardless_of_focus():
     gw = Gateway()
     ws = _FakeWS()

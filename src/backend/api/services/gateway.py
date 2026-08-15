@@ -43,6 +43,13 @@ _TERMINAL_AUTHOR_LOOP_EVENT_TYPES = frozenset({
     "author_loop_done", "author_loop_error", "author_loop_stopped",
 })
 
+# portrait_generation_done is portrait generation's only terminal event -- same "state is
+# REST-recoverable, replay only pollutes" reasoning as author_loop_done et al. (the cast grid
+# already re-fetches on this event, see listeners.ts). Unlike author_loop_done, its prune step
+# is scoped to (novel_id, character) rather than novel_id alone -- see
+# _prune_portrait_buffer's docstring for why.
+_PORTRAIT_TERMINAL_EVENT_TYPE = "portrait_generation_done"
+
 
 class Gateway:
     def __init__(self) -> None:
@@ -100,6 +107,7 @@ Transient events that do not enter the replay buffer:
             t.startswith("setup_chat_") or t.startswith("story_sandbox_")
             or t.startswith("archive_build_") or t == "author_loop_token"
             or t in _TERMINAL_AUTHOR_LOOP_EVENT_TYPES
+            or t == _PORTRAIT_TERMINAL_EVENT_TYPE
         )
 
     def _should_deliver(self, event: dict) -> bool:
@@ -127,6 +135,27 @@ Transient events that do not enter the replay buffer:
             if not (e.get("novel_id") == novel_id and str(e.get("type", "")).startswith(type_prefix))
         ]
 
+    def _prune_portrait_buffer(self, novel_id: str, character: str) -> None:
+        """Drop this character's own already-buffered portrait_generation_started event --
+        called when portrait_generation_done fires for it. Keyed on (novel_id, character)
+        rather than novel_id alone (unlike _prune_novel_buffer): unlike author_loop, several
+        characters' portraits can be generating concurrently within the same novel (e.g. a
+        batch regenerate), so pruning by novel_id alone would wipe out sibling characters'
+        still-in-flight started events, not just the one that just finished.
+
+        Before this method existed, portrait_generation_started/done were never excluded from
+        the buffer at all (unlike every other *_started/*_done event family here) and nothing
+        ever pruned them, so every character portrait ever generated in a session's lifetime
+        stayed buffered indefinitely -- harmless in the short term (each event is a small
+        dict), but genuinely unbounded over a long-running process across many characters."""
+        self._buffer = [
+            e for e in self._buffer
+            if not (
+                e.get("novel_id") == novel_id and e.get("character") == character
+                and str(e.get("type", "")) == "portrait_generation_started"
+            )
+        ]
+
     async def broadcast(self, event: dict) -> None:
         """Write buffer + broadcast to all WS clients (dead connection cleanup). Content
         events for a non-focused novel are filtered out before the per-client fan-out."""
@@ -138,6 +167,8 @@ Transient events that do not enter the replay buffer:
         nid = event.get("novel_id")
         if t in _TERMINAL_AUTHOR_LOOP_EVENT_TYPES and nid:
             self._prune_novel_buffer(nid, "author_loop_")
+        elif t == _PORTRAIT_TERMINAL_EVENT_TYPE and nid and event.get("character"):
+            self._prune_portrait_buffer(nid, str(event["character"]))
         self._log_outbound(event)
         if not self._should_deliver(event):
             return
