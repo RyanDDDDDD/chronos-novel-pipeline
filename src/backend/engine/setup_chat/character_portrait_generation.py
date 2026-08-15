@@ -6,10 +6,16 @@ this cache, or an edit that changed appearance fields before the extraction job 
 -- see media.portrait.visual_tags.extract_and_persist_visual_tags."""
 from __future__ import annotations
 
+from loguru import logger
 from media.portrait.novita_provider import NovitaImageProvider
 from media.portrait.prompt_builder import build_portrait_prompt
 from media.portrait.service import store_portrait
 from utils.paths import use_novel
+
+# 1 initial attempt + 3 retries -- Novita's async task occasionally fails transiently
+# ("failed to exec task" with no further detail), so a single shot was too eager to
+# surface an error the user could dodge just by clicking "regenerate" again.
+_MAX_GENERATE_ATTEMPTS = 4
 
 
 def _resolve_image_gen_entry(novel_id: str) -> dict | None:
@@ -69,12 +75,28 @@ async def _run_portrait_generation(novel_id: str, name: str) -> None:
                 tags = await extract_and_persist_visual_tags(novel_id, name, char)
 
             prompt, negative_prompt = build_portrait_prompt(tags, entry.get("base_model"))
-            image_bytes = await NovitaImageProvider(
-                api_key=entry["api_key"], model=entry.get("model", ""),
-            ).generate(prompt, negative_prompt=negative_prompt)
+            provider = NovitaImageProvider(api_key=entry["api_key"], model=entry.get("model", ""))
+
+            last_error: Exception | None = None
+            image_bytes: bytes | None = None
+            for attempt in range(1, _MAX_GENERATE_ATTEMPTS + 1):
+                try:
+                    image_bytes = await provider.generate(prompt, negative_prompt=negative_prompt)
+                    last_error = None
+                    break
+                except Exception as exc:  # noqa: BLE001 -- retried below; re-raised once attempts are exhausted
+                    last_error = exc
+                    logger.warning(
+                        "[portrait] {} generation attempt {}/{} failed: {}",
+                        name, attempt, _MAX_GENERATE_ATTEMPTS, exc,
+                    )
+            if last_error is not None:
+                raise last_error
+            assert image_bytes is not None  # guaranteed by the loop: no error means it was set
+
             relative = store_portrait(name, image_bytes)
-        except Exception as exc:  # noqa: BLE001 -- generation failure is a terminal state,
-            # no retry; broadcast so the user can retry manually.
+        except Exception as exc:  # noqa: BLE001 -- terminal after exhausting retries;
+            # broadcast so the user can still retry manually from the UI.
             await _hub_instance().broadcast(
                 {"type": "portrait_generation_done", "novel_id": novel_id,
                  "character": name, "error": str(exc)}
