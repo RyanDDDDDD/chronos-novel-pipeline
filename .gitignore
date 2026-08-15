@@ -89,3 +89,6 @@ htmlcov/
 /docs/spec/
 /docs/superpowers/
 
+# 项目开发看板：本地自由记录，不再进版本（2026-08-15 起）
+/TODO.md
+
