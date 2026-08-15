@@ -30,6 +30,7 @@ import { viewFocusChanged, selectViewUnreadForNovel } from '@/shared/store/viewU
 import type { AppDispatch, RootState } from '@/shared/store/store'
 import { selectConnected } from '@/shared/store/connectionSlice'
 import { selectAuthorLoopLastAutoSave, authorLoopAutoSaveConsumed } from '@/features/author/store/authorLoopSlice'
+import { selectPortraitLastFailure, portraitGenerationFailureConsumed } from '@/shared/store/portraitGenerationSlice'
 import { setChapter as setChapterAction, selectChapter, selectNovelSwitchOverlayVisible, clearNovelSwitchTarget, selectNovelSwitchTarget } from '@/shared/store/uiSlice'
 import NovelSwitchOverlay from '@/shared/components/NovelSwitchOverlay'
 import { resetForNovelSwitch } from '@/shared/store/resetForNovelSwitch'
@@ -56,6 +57,7 @@ export default function App() {
   const connected = useSelector(selectConnected)
   const ws = useWsClient()
   const lastAutoSave = useSelector(selectAuthorLoopLastAutoSave)
+  const portraitLastFailure = useSelector(selectPortraitLastFailure)
   const chapter = useSelector(selectChapter)
   const isViewingArchives = setupTabFromPathname(location.pathname) === 'archives'
 
@@ -158,6 +160,16 @@ export default function App() {
     }
     dispatch(authorLoopAutoSaveConsumed())
   }, [lastAutoSave, activeNovelId, queryClient, success, toastError, dispatch])
+
+  // Portrait generation now retries internally before giving up (see
+  // character_portrait_generation.py) -- by the time `error` reaches here it's the
+  // terminal outcome, so surface it once instead of leaving the failure silent behind
+  // the card's "重新生成" button.
+  useEffect(() => {
+    if (!portraitLastFailure) return
+    toastError(`立绘生成失败（${portraitLastFailure.character}）：${portraitLastFailure.error}`)
+    dispatch(portraitGenerationFailureConsumed())
+  }, [portraitLastFailure, toastError, dispatch])
 
   // setup_chat tools (patch_chapter/generate_one_chapter/edit_character/refine_world) mutate
   // world/cast/plot/skeleton server-side without any per-view invalidation of their own. Without
