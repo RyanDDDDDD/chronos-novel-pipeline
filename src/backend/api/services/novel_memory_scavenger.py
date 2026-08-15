@@ -22,12 +22,17 @@ from api.services.message_hub import MessageHub
 from api.services.scheduler import EventScheduler
 
 MEMORY_SCAN_INTERVAL_S = 60.0
-MEMORY_HIGH_WATERMARK_BYTES = 300 * 1024 * 1024  # 300 MB process RSS -- lowered from the
-# original 1.5GB once ChromaDB removal + disk-persisted tool-routing embeddings (2026-08-08/09)
-# dropped single-novel steady-state RSS from ~1.6GB to ~300MB (see docs/superpowers/specs/
-# 2026-08-08-chroma-to-sqlite-vector-store-migration-design.md and 2026-08-09-tool-vector-
-# cache-persistence-design.md); the old threshold sat below even the pre-optimization baseline,
-# so it never had headroom to actually evict anything.
+MEMORY_HIGH_WATERMARK_BYTES = 400 * 1024 * 1024  # 400 MB process RSS -- raised from 300MB
+# (2026-08-15) after live-measuring the real single-novel steady-state floor at ~286MB
+# (interpreter + fastapi/uvicorn/langchain_core + one warmed setup-chat/sandbox agent;
+# an unrelated venv contamination -- torch/transformers accidentally pulled in by
+# langchain_core's optional GPT2TokenizerFast fallback -- was inflating that floor to
+# ~456MB and has been separately fixed, see docs/TECHNICAL_JOURNEY.md #35). The 300MB
+# figure documented at the 2026-08-08/09 Chroma-removal baseline had already been below
+# the real floor since the day it was set, so the watermark check was permanently true
+# and evicting every tick regardless of actual novel count. 400MB leaves ~114MB of
+# margin above the measured floor -- revisit if the single-novel floor itself moves
+# (new heavy dependency, more warmup work, etc.).
 IDLE_EVICT_TTL_S = 15 * 60.0  # 15 min
 MAX_HIGH_WATER_EVICTIONS_PER_TICK = 1
 
