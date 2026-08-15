@@ -43,11 +43,6 @@ export type ChronosConfig = {
     search_provider?: 'tavily' | 'baidu_qianfan'
     search_top_k?: number
   }
-  paths?: {
-    chapters_dir?: string
-    agents_dir?: string
-    manifest_path?: string
-  }
   novel_import?: NovelImportConfig
   novels?: NovelsConfig
 }

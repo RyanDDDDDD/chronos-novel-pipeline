@@ -32,11 +32,6 @@ _DEFAULTS: dict = {
     "server": {
         "engine_port": 8776,
     },
-    "paths": {
-        "chapters_dir": "chapters",
-        "agents_dir": "hooks/packages",
-        "manifest_path": "config/pipelines/default/manifest.json",
-    },
     "novel_import": {
         "chunk_size": 10000,
         "concurrency": None,
