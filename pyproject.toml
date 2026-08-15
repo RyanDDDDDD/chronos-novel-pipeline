@@ -14,15 +14,13 @@ authors = [
 keywords = ["novel-generation", "multi-agent", "sandbox", "long-form-fiction"]
 dependencies = [
     "langchain-anthropic>=0.3.0",
-    "langchain-mcp-adapters>=0.2.2",
     "langchain-openai>=0.3.0",
-    "json-repair>=0.30.0",
     "loguru>=0.7.3",
     "websockets>=16.0",
     "fastapi>=0.136.3",
     "uvicorn[standard]>=0.46.0",
-    "aiofiles>=25.1.0",
     "fastembed>=0.8.0",
+    "jsonschema>=4.26.0",
     "langgraph>=1.2.2,<2",
     "langgraph-checkpoint-sqlite>=2.0.0",
     "aiosqlite>=0.20",
@@ -35,7 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-app = ["instructor", "rich", "textual"]
+app = ["rich", "textual"]
 release = ["pyinstaller>=6.0"]
 
 [dependency-groups]
