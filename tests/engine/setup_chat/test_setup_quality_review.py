@@ -280,10 +280,6 @@ async def test_edit_character_core_persists_without_inline_gate(monkeypatch):
         "engine.setup_chat.character_background_review.schedule_character_quality_review",
         lambda name, **_kwargs: None,
     )
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.cancel_active_character_fix",
-        lambda novel_id, name: _noop_coro(),
-    )
 
     args = _character_args("甲")
     args["personality"] = "改过的人格"
@@ -291,10 +287,6 @@ async def test_edit_character_core_persists_without_inline_gate(monkeypatch):
     assert ok is True
     assert char is not None
     assert lore_raw()[0]["personality"] == "改过的人格"
-
-
-async def _noop_coro():
-    return None
 
 
 def test_active_hooks_is_importable_as_public_name():

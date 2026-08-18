@@ -11,7 +11,6 @@ regardless of outcome."""
 from __future__ import annotations
 
 import asyncio
-import contextlib
 
 from utils.paths import use_novel
 
@@ -93,33 +92,6 @@ async def mark_review_scheduled(novel_id: str, chapter: int) -> None:
     skeleton_pipeline.mark_review_active(novel_id, chapter)
 
 
-async def cancel_active_review(novel_id: str, chapter: int, *, restarting: bool = True) -> None:
-    """Called before plot/skeleton edits touch this chapter: cancel any in-flight review/auto-fix
-    job and wait for it to stop so the caller's save_all() cannot race the job's.
-
-    restarting=True (default): broadcast skeleton_review_restarted -- the caller will reschedule
-    review after editing (write_chapter_skeleton / patch_chapter).
-
-    restarting=False: clear the review-active flag and broadcast skeleton_review_done when this
-    was the last active chapter -- used when the edit invalidates beats and no new review is
-    scheduled (generate_one_chapter replace)."""
-    from api.services.scheduler import SCHEDULER
-
-    from engine.setup_chat import skeleton_pipeline
-
-    task = SCHEDULER.cancel_once(f"skeleton-chapter-fix:{novel_id}:{chapter}")
-    if task is not None:
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
-    if restarting:
-        if task is not None:
-            await _broadcast_skeleton_event(novel_id, "skeleton_review_restarted", chapter)
-    elif skeleton_pipeline.is_review_active(novel_id, chapter):
-        skeleton_pipeline.clear_review_active(novel_id, chapter)
-        if not skeleton_pipeline.any_review_active(novel_id):
-            await _broadcast_skeleton_event(novel_id, "skeleton_review_done")
-
-
 def _regenerate_stage_tool_for(chapter: int):
     """Factory bound to one chapter -- the fix agent operates on exactly one chapter per run,
     so `chapter` doesn't need to be an LLM-filled tool parameter. Not registered on the
@@ -131,10 +103,10 @@ def _regenerate_stage_tool_for(chapter: int):
     async def regenerate_stage(stage_num: int, guidance: str) -> str:
         from repositories import get_plot_repo
 
-        chapters = get_plot_repo().list_raw()
-        ch = next((c for c in chapters if c.get("chapter") == chapter), None)
-        if ch is None:
+        outline_lookup = get_plot_repo().get_outline_with_version(chapter)
+        if outline_lookup is None:
             return f"第{chapter}章已被删除，无法重生成 stage {stage_num}。"
+        ch, expected_version = outline_lookup
         result = await skeleton_writer.generate_stage_beats(
             chapter, stage_num, overview=guidance, is_revision=True)
         if isinstance(result, str):
@@ -142,7 +114,9 @@ def _regenerate_stage_tool_for(chapter: int):
         by_num = {s.get("stage_num"): s for s in ch["stages"]}
         await _fill_dialogue_drafts(chapter, by_num, {stage_num: result})
         by_num[stage_num]["beats"] = result
-        get_plot_repo().save_all(chapters)
+        new_version = get_plot_repo().save_chapter_if_version_matches(chapter, ch, expected_version)
+        if new_version is None:
+            return f"第{chapter}章在审查开始后已被修改，stage {stage_num} 的重新生成已放弃。"
         return f"stage {stage_num} 已按反馈重新生成。"
 
     return StructuredTool.from_function(
@@ -167,10 +141,8 @@ async def _run_chapter_review_fix(chapter: int, novel_id: str) -> None:
     """The background coroutine itself: one review pass -> (if needed) one fix-agent run --
     no re-review after the fix, since review only judges "needs fixing or not", not "is the
     fix good enough". A clean completion (not cancelled) clears _ACTIVE_REVIEWS and notifies;
-    a cancellation (via cancel_active_review, above) leaves _ACTIVE_REVIEWS set (the chapter is
-    about to be restarted, so from an outside observer's view it never stopped being "under
-    review") and never reaches the code after the try/except -- CancelledError propagates
-    straight through it."""
+    a cancellation (scheduler stop/timeout) leaves _ACTIVE_REVIEWS set and never reaches the
+    code after the try/except -- CancelledError propagates straight through it."""
     await mark_review_scheduled(novel_id, chapter)
 
     from repositories import get_plot_repo

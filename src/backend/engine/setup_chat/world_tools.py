@@ -27,16 +27,12 @@ async def _commit_world_write(
     *,
     changed_field: str,
     success_title: str,
+    expected_version: int,
     render_body: Callable[[], str],
 ) -> str:
     """Persist first, then render the preview — render_body must reflect post-write state
     (e.g. re-reading the store), so it cannot be evaluated before persist_world_doc runs."""
-    from utils.paths import active_novel_id
-
-    from engine.setup_chat.world_background_review import cancel_active_world_review_or_fix
-
-    await cancel_active_world_review_or_fix(active_novel_id())
-    saved, err = wo.persist_world_doc(doc, changed_field=changed_field)
+    saved, err = wo.persist_world_doc(doc, changed_field=changed_field, expected_version=expected_version)
     if not saved:
         return err
     schedule_world_quality_review()
@@ -51,25 +47,27 @@ def _make_scalar_tools(
 ) -> tuple[BaseTool, BaseTool]:
     async def set_fn(**kwargs: Any) -> str:
         value = next(iter(kwargs.values()))
-        ok, err, doc = wo.set_scalar_field(field, value)
+        ok, err, doc, version = wo.set_scalar_field(field, value)
         if not ok:
             return err
         return await _commit_world_write(
             doc,
             changed_field=field,
             success_title=f"已写入{label}。",
+            expected_version=version,
             render_body=lambda: str(doc.get(field, "")),
         )
 
     async def refine_fn(**kwargs: Any) -> str:
         value = next(iter(kwargs.values()))
-        ok, err, doc = wo.refine_scalar_field(field, value)
+        ok, err, doc, version = wo.refine_scalar_field(field, value)
         if not ok:
             return err
         return await _commit_world_write(
             doc,
             changed_field=field,
             success_title=f"已更新{label}。",
+            expected_version=version,
             render_body=lambda: str(doc.get(field, "")),
         )
 
@@ -102,20 +100,21 @@ def _make_list_tools(
     async def add_fn(**kwargs: Any) -> str:
         args = add_schema.model_validate(kwargs)
         item = args.model_dump()
-        ok, err, doc = wo.add_list_entry(field, item)
+        ok, err, doc, version = wo.add_list_entry(field, item)
         if not ok:
             return err
         return await _commit_world_write(
             doc,
             changed_field=field,
             success_title=f"已添加{label}「{args.name}」。",
+            expected_version=version,
             render_body=lambda: wo.render_list_field(field),
         )
 
     async def edit_fn(**kwargs: Any) -> str:
         args = edit_schema.model_validate(kwargs)
         kw = getattr(args, "keywords", None) if with_keywords else None
-        ok, err, doc = wo.edit_list_entry(
+        ok, err, doc, version = wo.edit_list_entry(
             field,
             args.name,
             desc=args.desc,
@@ -127,20 +126,16 @@ def _make_list_tools(
             doc,
             changed_field=field,
             success_title=f"已更新{label}「{args.name}」。",
+            expected_version=version,
             render_body=lambda: wo.render_list_field(field),
         )
 
     async def delete_fn(**kwargs: Any) -> str:
         args = DeleteWorldEntryArgs.model_validate(kwargs)
-        ok, err, doc = wo.remove_list_entry(field, args.name)
+        ok, err, doc, version = wo.remove_list_entry(field, args.name)
         if not ok:
             return err
-        from utils.paths import active_novel_id
-
-        from engine.setup_chat.world_background_review import cancel_active_world_review_or_fix
-
-        await cancel_active_world_review_or_fix(active_novel_id())
-        saved, save_err = wo.persist_world_doc(doc, changed_field=field)
+        saved, save_err = wo.persist_world_doc(doc, changed_field=field, expected_version=version)
         if not saved:
             return save_err
         schedule_world_quality_review()

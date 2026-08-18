@@ -198,7 +198,7 @@ async def test_run_world_review_notifies_on_accept_without_fix_agent(monkeypatch
         "engine.setup_chat.setup_quality_review.gate_world_bible",
         _fake_gate,
     )
-    monkeypatch.setattr(wbr, "_broadcast", lambda *a, **k: _noop())
+    monkeypatch.setattr(wbr, "_broadcast", lambda *a, **k: _noop_async())
     monkeypatch.setattr("api.routes._hub_instance", lambda: _Hub())
     monkeypatch.setattr(wbr, "run_world_fix_agent", fail_if_called)
 
@@ -207,34 +207,6 @@ async def test_run_world_review_notifies_on_accept_without_fix_agent(monkeypatch
 
     assert fix_calls == []
     assert notices and "审查通过" in notices[0]
-
-
-async def _noop():
-    return None
-
-
-@pytest.mark.asyncio
-async def test_cancel_active_world_review_or_fix_awaits_cancelled_task(monkeypatch):
-    import asyncio
-
-    async def long_running():
-        await asyncio.sleep(3600)
-
-    task = asyncio.create_task(long_running())
-    captured_name = {}
-
-    def fake_cancel_once(name):
-        captured_name["name"] = name
-        task.cancel()
-        return task
-
-    import api.services.scheduler as sched
-    monkeypatch.setattr(sched.SCHEDULER, "cancel_once", fake_cancel_once)
-
-    await wbr.cancel_active_world_review_or_fix("n")
-
-    assert captured_name["name"] == "world-review-run:n"
-    assert task.cancelled()
 
 
 @pytest.mark.asyncio

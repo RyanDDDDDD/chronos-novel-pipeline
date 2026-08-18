@@ -403,53 +403,53 @@ async def _edit_character_core(
     )
     char.update(extra)
 
-    from utils.paths import active_novel_id
-
-    from engine.setup_chat.character_background_review import cancel_active_character_fix
-
-    await cancel_active_character_fix(active_novel_id(), name)
-
-    visual_changed = False
-    async with _cast_write_lock:
-        roster = get_lore_repo().list_raw()
-        if not roster:
-            return False, "当前没有人物设定（cast 尚未构建）。", None
-        idx = _find_character_index(roster, name)
-        if idx is None:
-            names = "、".join(
-                str(c.get("name") or c.get("given_name") or "?") for c in roster if isinstance(c, dict)
-            )
-            return False, f"未找到角色「{name}」。现有角色：{names}", None
-
-        new_name = given_name
-        for i, c in enumerate(roster):
-            if i == idx or not isinstance(c, dict):
-                continue
-            if _name_key(c) == new_name:
-                return False, f"角色「{new_name}」已存在，请换个名字。", None
-
-        old_char = roster[idx]
-        visual_changed = (
-            old_char.get("gender") != char.get("gender")
-            or old_char.get("physique") != char.get("physique")
-            or old_char.get("clothing_dna") != char.get("clothing_dna")
+    roster = get_lore_repo().list_raw()
+    if not roster:
+        return False, "当前没有人物设定（cast 尚未构建）。", None
+    idx = _find_character_index(roster, name)
+    if idx is None:
+        names = "、".join(
+            str(c.get("name") or c.get("given_name") or "?") for c in roster if isinstance(c, dict)
         )
-        if portrait_visual_tags is not None:
-            # Explicit manual override (e.g. the cast detail panel) -- appearance-field
-            # changes in this same edit still win below via schedule_extract_visual_tags,
-            # since a real appearance change makes any hand-typed tags stale.
-            char["portrait_visual_tags"] = portrait_visual_tags.strip()
-        elif not visual_changed and isinstance(old_char.get("portrait_visual_tags"), str):
-            char["portrait_visual_tags"] = old_char["portrait_visual_tags"]
+        return False, f"未找到角色「{name}」。现有角色：{names}", None
 
-        roster[idx] = char
-        roster_errs = validate_character_edit(char, roster, strict_race_membership=False)
-        if roster_errs:
-            return False, "群像校验未通过，未写入：\n" + "\n".join(f"- {e}" for e in roster_errs), None
-        try:
-            get_lore_repo().save_all(roster)
-        except OSError as exc:
-            return False, f"写盘失败：{exc}", None
+    version_lookup = get_lore_repo().get_character_with_version(name)
+    if version_lookup is None:
+        return False, f"未找到角色「{name}」。", None
+    _current_char, expected_version = version_lookup
+
+    new_name = given_name
+    for i, c in enumerate(roster):
+        if i == idx or not isinstance(c, dict):
+            continue
+        if _name_key(c) == new_name:
+            return False, f"角色「{new_name}」已存在，请换个名字。", None
+
+    old_char = roster[idx]
+    visual_changed = (
+        old_char.get("gender") != char.get("gender")
+        or old_char.get("physique") != char.get("physique")
+        or old_char.get("clothing_dna") != char.get("clothing_dna")
+    )
+    if portrait_visual_tags is not None:
+        # Explicit manual override (e.g. the cast detail panel) -- appearance-field
+        # changes in this same edit still win below via schedule_extract_visual_tags,
+        # since a real appearance change makes any hand-typed tags stale.
+        char["portrait_visual_tags"] = portrait_visual_tags.strip()
+    elif not visual_changed and isinstance(old_char.get("portrait_visual_tags"), str):
+        char["portrait_visual_tags"] = old_char["portrait_visual_tags"]
+
+    roster[idx] = char
+    roster_errs = validate_character_edit(char, roster, strict_race_membership=False)
+    if roster_errs:
+        return False, "群像校验未通过，未写入：\n" + "\n".join(f"- {e}" for e in roster_errs), None
+    new_version = get_lore_repo().save_character_if_version_matches(name, char, expected_version)
+    if new_version is None:
+        return (
+            False,
+            f"角色「{name}」在你读取之后已被修改，写入已取消。请重新读取最新数据后再改。",
+            None,
+        )
 
     from engine.memory_recall.entity_index import invalidate_entity_vocab_cache
 
@@ -579,13 +579,12 @@ async def _delete_character_core(name: str) -> tuple[bool, str, dict]:
     mentions them (scan_characters must run before the roster write below, since its vocab is
     built from the live lore roster -- deleting the character first would make the scan blind to
     their own name) and to every relationship-graph edge touching them."""
-    from utils.paths import active_novel_id
-
-    from engine.setup_chat.character_background_review import cancel_active_character_fix
-
-    await cancel_active_character_fix(active_novel_id(), name)
-
     from repositories import get_lore_repo, get_plot_repo
+
+    version_lookup = get_lore_repo().get_character_with_version(name)
+    if version_lookup is None:
+        return False, f"未找到角色「{name}」。", {}
+    _current_char, expected_version = version_lookup
 
     roster = get_lore_repo().list_raw()
     idx = _find_character_index(roster, name)
@@ -622,16 +621,17 @@ async def _delete_character_core(name: str) -> tuple[bool, str, dict]:
     for e in edges:
         remove_edge(e["from"], e["to"])
 
-    async with _cast_write_lock:
-        fresh = get_lore_repo().list_raw()
-        fresh_idx = _find_character_index(fresh, name)
-        if fresh_idx is None:
-            return False, f"未找到角色「{name}」。", {}
-        new_roster = [c for i, c in enumerate(fresh) if i != fresh_idx]
-        try:
-            get_lore_repo().save_all(new_roster)
-        except OSError as exc:
-            return False, f"写盘失败：{exc}", {}
+    # CAS delete subsumes the old "re-read + re-check the character still exists" guard
+    # (previously a `fresh = list_raw(); fresh_idx = ...; if fresh_idx is None: ...` block
+    # under _cast_write_lock) with something stronger: it also catches the character having
+    # been *edited* (not just deleted) by someone else during the cascade above.
+    deleted = get_lore_repo().delete_character_if_version_matches(name, expected_version)
+    if not deleted:
+        return (
+            False,
+            f"角色「{name}」在你读取之后已被修改，删除已取消。请重新读取最新数据后再操作。",
+            {},
+        )
 
     from engine.archive.archive_view import delete_character_archives
     from engine.setup_chat.timeline_auto import schedule_timeline_cascade
@@ -719,22 +719,26 @@ async def _generate_one_chapter_impl(
         return False, "校验未通过，未写入：\n" + "\n".join(f"- {e}" for e in errs)
 
     replacing = chapter_index != n + 1
-    if replacing:
-        from utils.paths import active_novel_id
-
-        from engine.setup_chat.skeleton_background_review import cancel_active_review
-
-        await cancel_active_review(active_novel_id(), chapter_index, restarting=False)
-
     chapter = _clear_skeleton(built_chapter)
     if replacing:
-        chapters[chapter_index - 1] = chapter
+        lookup = get_plot_repo().get_outline_with_version(chapter_index)
+        if lookup is None:
+            return False, f"第 {chapter_index} 章不存在于 plot。"
+        _old, expected_version = lookup
+        new_version = get_plot_repo().save_chapter_if_version_matches(
+            chapter_index, chapter, expected_version,
+        )
+        if new_version is None:
+            return False, (
+                f"第{chapter_index}章在你读取之后已被修改，写入已取消。"
+                "请重新读取最新数据后再改。"
+            )
     else:
         chapters.append(chapter)
-    try:
-        get_plot_repo().save_all(chapters)
-    except OSError as exc:
-        return False, f"写盘失败：{exc}"
+        try:
+            get_plot_repo().save_all(chapters)
+        except OSError as exc:
+            return False, f"写盘失败：{exc}"
     verb = "更新" if replacing else "追加"
     tail = (
         "\n该章分拍底稿（beats）已重置——请重新讨论本章骨架并用 read_skeleton_seed → write_chapter_skeleton 重建后再写作。"
@@ -1041,13 +1045,6 @@ async def _patch_chapter_core(
     run_review: bool = True,
     is_reviewed: bool = False,
 ) -> tuple[bool, str]:
-    from utils.paths import active_novel_id
-
-    from engine.setup_chat.skeleton_background_review import cancel_active_review
-
-    novel_id = active_novel_id()
-    await cancel_active_review(novel_id, chapter)
-
     import copy
 
     from repositories import get_plot_repo
@@ -1060,10 +1057,10 @@ async def _patch_chapter_core(
         validate_plot_chapters,
     )
 
-    chapters = get_plot_repo().list_raw()
-    ch = next((c for c in chapters if isinstance(c, dict) and c.get("chapter") == chapter), None)
-    if ch is None:
+    outline_lookup = get_plot_repo().get_outline_with_version(chapter)
+    if outline_lookup is None:
         return False, f"第 {chapter} 章不存在于 plot（请先写本章 plot）。"
+    ch, expected_version = outline_lookup
     args = _Args.model_validate({"chapter": chapter, "ops": ops, "core_xp": core_xp})
 
     orig_stages = [s for s in (ch.get("stages") or []) if isinstance(s, dict)]
@@ -1105,10 +1102,9 @@ async def _patch_chapter_core(
     ch["stages"] = new_stages
     if args.core_xp is not None:
         ch["core_xp"] = args.core_xp
-    try:
-        get_plot_repo().save_all(chapters)
-    except OSError as exc:
-        return False, f"写盘失败：{exc}"
+    new_version = get_plot_repo().save_chapter_if_version_matches(chapter, ch, expected_version)
+    if new_version is None:
+        return False, f"第{chapter}章在你读取之后已被修改，写入已取消。请重新读取最新数据后再改。"
     #无条件补一次级联调度，不只在 cleared（description 改动）时——add/remove/replace_beat 这些不
     #触发 cleared 的 op 也可能改变本章在场角色（如 add 插入带新角色的 stage），missing_timeline_
     #targets 是按当前 roster 现算的（自愈式，见 timeline_auto.py 模块 docstring），所以这里重复
@@ -1486,18 +1482,11 @@ async def write_chapter_skeleton(
         "chapter": chapter, "stages": stages, "is_reviewed": is_reviewed,
     })
 
-    from utils.paths import active_novel_id
-
-    from engine.setup_chat.skeleton_background_review import cancel_active_review
-
-    novel_id = active_novel_id()
-    await cancel_active_review(novel_id, chapter)
-
     from repositories import get_plot_repo
-    chapters = get_plot_repo().list_raw()
-    ch = next((c for c in chapters if isinstance(c, dict) and c.get("chapter") == chapter), None)
-    if ch is None:
+    outline_lookup = get_plot_repo().get_outline_with_version(chapter)
+    if outline_lookup is None:
         return f"第 {chapter} 章不存在于 plot，无法写骨架（请先写本章 plot）。"
+    ch, expected_version = outline_lookup
     by_num = {s.get("stage_num"): s for s in ch.get("stages") or []}
 
     from loguru import logger
@@ -1551,10 +1540,9 @@ async def write_chapter_skeleton(
         written.append(stage_num)
         beat_counts.append(f"stage{stage_num}（{len(beats)}拍）")
 
-    try:
-        get_plot_repo().save_all(chapters)
-    except OSError as exc:
-        return f"写盘失败：{exc}"
+    new_version = get_plot_repo().save_chapter_if_version_matches(chapter, ch, expected_version)
+    if new_version is None:
+        return f"第{chapter}章在你读取之后已被修改，写入已取消。请重新读取最新数据后再改。"
     for sn in written:
         skeleton_pipeline.clear_stage_markers(chapter, sn)
 
@@ -1734,10 +1722,10 @@ def _patch_plot_text(
     from engine.setup_chat.text_patch import apply_text_patches, format_patch_report
     from engine.setup_chat.tool_args import load_plot_grounding, validate_plot_chapters
 
-    chapters = get_plot_repo().list_raw()
-    ch = next((c for c in chapters if isinstance(c, dict) and c.get("chapter") == chapter), None)
-    if ch is None:
+    outline_lookup = get_plot_repo().get_outline_with_version(chapter)
+    if outline_lookup is None:
         return f"第 {chapter} 章不存在于 plot。"
+    ch, expected_version = outline_lookup
 
     stages = [s for s in (ch.get("stages") or []) if isinstance(s, dict)]
     if not stages:
@@ -1787,7 +1775,11 @@ def _patch_plot_text(
             ch.clear()
             ch.update(snapshot)
             return "校验未通过，未写入：\n" + "\n".join(f"- {e}" for e in errs)
-        get_plot_repo().save_all(chapters)
+        new_version = get_plot_repo().save_chapter_if_version_matches(chapter, ch, expected_version)
+        if new_version is None:
+            ch.clear()
+            ch.update(snapshot)
+            return f"第{chapter}章在你读取之后已被修改，写入已取消。请重新读取最新数据后再改。"
 
     head = f"plot {field} 补丁完成" if not dry_run else f"plot {field} dry_run 预览"
     return format_tool_done(head, "\n\n".join(reports))
@@ -1809,10 +1801,10 @@ def _patch_beat_text(
     from engine.setup_chat.text_patch import apply_text_patches, format_patch_report
     from engine.setup_chat.tool_args import load_plot_grounding, validate_plot_chapters
 
-    chapters = get_plot_repo().list_raw()
-    ch = next((c for c in chapters if isinstance(c, dict) and c.get("chapter") == chapter), None)
-    if ch is None:
+    outline_lookup = get_plot_repo().get_outline_with_version(chapter)
+    if outline_lookup is None:
         return f"第 {chapter} 章不存在于 plot。"
+    ch, expected_version = outline_lookup
     stages = [s for s in (ch.get("stages") or []) if isinstance(s, dict)]
     st = next((s for s in stages if s.get("stage_num") == stage_num), None)
     if st is None:
@@ -1841,7 +1833,13 @@ def _patch_beat_text(
             ch.update(snapshot)
             return "校验未通过，未写入：\n" + "\n".join(f"- {e}" for e in errs)
         try:
-            get_plot_repo().save_all(chapters)
+            new_version = get_plot_repo().save_chapter_if_version_matches(
+                chapter, ch, expected_version,
+            )
+            if new_version is None:
+                ch.clear()
+                ch.update(snapshot)
+                return f"第{chapter}章在你读取之后已被修改，写入已取消。请重新读取最新数据后再改。"
         except OSError as exc:
             ch.clear()
             ch.update(snapshot)
@@ -1989,12 +1987,6 @@ async def patch_text_fragment(
 
     if args.dry_run or _patch_result_is_error(out):
         return out
-
-    from utils.paths import active_novel_id
-
-    from engine.setup_chat.skeleton_background_review import cancel_active_review
-
-    await cancel_active_review(active_novel_id(), args.chapter)
 
     from repositories import get_plot_repo
 

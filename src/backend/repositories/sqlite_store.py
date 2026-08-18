@@ -100,6 +100,22 @@ def _character_name(conn: sqlite3.Connection, character_id: int) -> str | None:
     return str(row[0]) if row else None
 
 
+_VERSIONED_TABLES = ("lore_characters", "plot_chapters", "documents")
+
+
+def _ensure_version_columns(conn: sqlite3.Connection) -> None:
+    """Migration for DBs created before the optimistic-concurrency version column existed
+    (the 17 already-migrated production novel DBs). SQLite has no ADD COLUMN IF NOT EXISTS,
+    so check PRAGMA table_info first -- idempotent, safe to call on every connection open."""
+    for table in _VERSIONED_TABLES:
+        cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if not cols:
+            continue
+        if "version" not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
+    conn.commit()
+
+
 def get_connection(path: str, ddl: str = _DDL) -> sqlite3.Connection:
     """Process-wide sqlite3.Connection cache keyed by db path -- reuse one connection per
     novel db instead of opening a new handle on every cross-module access (timeline,
@@ -109,6 +125,7 @@ def get_connection(path: str, ddl: str = _DDL) -> sqlite3.Connection:
         conn = sqlite3.connect(path, check_same_thread=False)
         conn.execute("PRAGMA foreign_keys = ON")
         conn.executescript(ddl)
+        _ensure_version_columns(conn)
         return conn
 
     with _clients_lock:
@@ -178,10 +195,53 @@ class SqliteStore:
     def save_doc(self, key: str, path: str, data: Any) -> None:
         del path
         self._conn.execute(
-            "INSERT OR REPLACE INTO documents (doc_key, data_json) VALUES (?, ?)",
+            "INSERT INTO documents (doc_key, data_json, version) VALUES (?, ?, 1)"
+            " ON CONFLICT(doc_key) DO UPDATE SET"
+            " data_json = excluded.data_json, version = documents.version + 1",
             (key, json.dumps(data, ensure_ascii=False)),
         )
         self._conn.commit()
+
+    def get_doc_with_version(self, key: str) -> tuple[Any, int] | None:
+        row = self._conn.execute(
+            "SELECT data_json, version FROM documents WHERE doc_key = ?",
+            (key,),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            return json.loads(row[0]), int(row[1])
+        except json.JSONDecodeError:
+            return None
+
+    def save_doc_if_version_matches(
+        self, key: str, data: Any, expected_version: int,
+    ) -> int | None:
+        payload = json.dumps(data, ensure_ascii=False)
+        with _WRITE_LOCK:
+            if expected_version == 0:
+                # Create path: row must not already exist.
+                cur = self._conn.execute(
+                    "INSERT INTO documents (doc_key, data_json, version)"
+                    " SELECT ?, ?, 1 WHERE NOT EXISTS ("
+                    "   SELECT 1 FROM documents WHERE doc_key = ?"
+                    " )",
+                    (key, payload, key),
+                )
+                self._conn.commit()
+                return 1 if cur.rowcount == 1 else None
+            cur = self._conn.execute(
+                "UPDATE documents SET data_json = ?, version = version + 1"
+                " WHERE doc_key = ? AND version = ?",
+                (payload, key, expected_version),
+            )
+            self._conn.commit()
+            if cur.rowcount == 0:
+                return None
+            row = self._conn.execute(
+                "SELECT version FROM documents WHERE doc_key = ?", (key,),
+            ).fetchone()
+            return int(row[0]) if row else None
 
     # ---- lore ----
     def get_lore(self, name: str) -> dict | None:
@@ -276,6 +336,69 @@ class SqliteStore:
                 self._conn.rollback()
                 raise
 
+    def get_lore_with_version(self, name: str) -> tuple[dict, int] | None:
+        row = self._conn.execute(
+            "SELECT data_json, version FROM lore_characters WHERE name = ?",
+            (name,),
+        ).fetchone()
+        if row is None:
+            return None
+        char = dict(json.loads(row[0]))
+        char.setdefault("extensions", {})
+        self._merge_story_extensions(char, name)
+        return char, int(row[1])
+
+    def save_lore_if_version_matches(
+        self, name: str, data: dict, expected_version: int,
+    ) -> int | None:
+        payload = json.dumps(data, ensure_ascii=False)
+        new_key = data.get("name")
+        if not isinstance(new_key, str) or not new_key:
+            new_key = name
+        with _WRITE_LOCK:
+            cur = self._conn.execute(
+                "UPDATE lore_characters SET data_json = ?, name = ?, version = version + 1"
+                " WHERE name = ? AND version = ?",
+                (payload, new_key, name, expected_version),
+            )
+            self._conn.commit()
+            if cur.rowcount == 0:
+                return None
+            row = self._conn.execute(
+                "SELECT version FROM lore_characters WHERE name = ?", (new_key,),
+            ).fetchone()
+            return int(row[0]) if row else None
+
+    def delete_lore_if_version_matches(self, name: str, expected_version: int) -> bool:
+        with _WRITE_LOCK:
+            self._conn.execute("BEGIN")
+            try:
+                row = self._conn.execute(
+                    "SELECT id FROM lore_characters WHERE name = ? AND version = ?",
+                    (name, expected_version),
+                ).fetchone()
+                if row is None:
+                    self._conn.rollback()
+                    return False
+                cid = int(row[0])
+                self._conn.execute(
+                    "DELETE FROM character_archives WHERE character_id = ?", (cid,),
+                )
+                self._conn.execute(
+                    "DELETE FROM timeline_snapshots WHERE character_id = ?", (cid,),
+                )
+                self._conn.execute(
+                    "DELETE FROM relationship_edges"
+                    " WHERE from_character_id = ? OR to_character_id = ?",
+                    (cid, cid),
+                )
+                self._conn.execute("DELETE FROM lore_characters WHERE id = ?", (cid,))
+                self._conn.commit()
+                return True
+            except BaseException:
+                self._conn.rollback()
+                raise
+
     # ---- plot ----
     def get_outline(self, chapter: int) -> dict | None:
         row = self._conn.execute(
@@ -342,6 +465,60 @@ class SqliteStore:
                             (chapter_num, payload, seq),
                         )
                 self._conn.commit()
+            except BaseException:
+                self._conn.rollback()
+                raise
+
+    def get_outline_with_version(self, chapter: int) -> tuple[dict, int] | None:
+        row = self._conn.execute(
+            "SELECT data_json, version FROM plot_chapters WHERE chapter = ?",
+            (chapter,),
+        ).fetchone()
+        if row is None:
+            return None
+        return json.loads(row[0]), int(row[1])
+
+    def save_chapter_if_version_matches(
+        self, chapter: int, data: dict, expected_version: int,
+    ) -> int | None:
+        payload = json.dumps(data, ensure_ascii=False)
+        with _WRITE_LOCK:
+            cur = self._conn.execute(
+                "UPDATE plot_chapters SET data_json = ?, version = version + 1"
+                " WHERE chapter = ? AND version = ?",
+                (payload, chapter, expected_version),
+            )
+            self._conn.commit()
+            if cur.rowcount == 0:
+                return None
+            row = self._conn.execute(
+                "SELECT version FROM plot_chapters WHERE chapter = ?", (chapter,),
+            ).fetchone()
+            return int(row[0]) if row else None
+
+    def delete_chapter_if_version_matches(self, chapter: int, expected_version: int) -> bool:
+        with _WRITE_LOCK:
+            self._conn.execute("BEGIN")
+            try:
+                row = self._conn.execute(
+                    "SELECT chapter FROM plot_chapters WHERE chapter = ? AND version = ?",
+                    (chapter, expected_version),
+                ).fetchone()
+                if row is None:
+                    self._conn.rollback()
+                    return False
+                self._conn.execute(
+                    "DELETE FROM character_archives WHERE chapter = ?", (chapter,),
+                )
+                self._conn.execute(
+                    "DELETE FROM timeline_snapshots WHERE chapter = ?", (chapter,),
+                )
+                self._conn.execute(
+                    "DELETE FROM sandbox_events WHERE chapter = ?", (chapter,),
+                )
+                self._conn.execute("DELETE FROM plot_chapters WHERE chapter = ?", (chapter,))
+                self._conn.commit()
+                return True
             except BaseException:
                 self._conn.rollback()
                 raise

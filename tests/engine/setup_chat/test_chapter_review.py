@@ -382,10 +382,6 @@ async def test_maybe_schedule_marks_reviewed_and_skips_when_is_reviewed(monkeypa
         "engine.setup_chat.skeleton_background_review.schedule_chapter_review_fix",
         lambda chapter: scheduled.append(chapter),
     )
-    monkeypatch.setattr(
-        "engine.setup_chat.skeleton_background_review.cancel_active_review",
-        lambda novel_id, chapter: None,
-    )
     monkeypatch.setattr("utils.paths.active_novel_id", lambda: "n")
 
     stages = [{"stage_num": 1, "beats": [{"text": "拍"}]}]
@@ -407,10 +403,6 @@ async def test_maybe_schedule_skips_when_chapter_already_reviewed(monkeypatch, t
     monkeypatch.setattr(
         "engine.setup_chat.skeleton_background_review.schedule_chapter_review_fix",
         lambda chapter: scheduled.append(chapter),
-    )
-    monkeypatch.setattr(
-        "engine.setup_chat.skeleton_background_review.cancel_active_review",
-        lambda novel_id, chapter: None,
     )
     monkeypatch.setattr("utils.paths.active_novel_id", lambda: "n")
 

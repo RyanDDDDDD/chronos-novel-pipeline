@@ -250,13 +250,11 @@ def test_cancel_once_returns_none_for_unknown_name():
 
 @pytest.mark.asyncio
 async def test_cancel_once_is_a_noop_when_job_cancels_itself():
-    """A job's coroutine calling cancel_once on its own name happens for real:
-    character_background_review's fix agent re-invokes edit_character on the
-    character it's already fixing, and edit_character unconditionally calls
-    cancel_active_character_fix before writing -- which resolves to this same
-    scheduler job. Cancelling (and the caller then awaiting) yourself is always
-    wrong, so cancel_once must recognize and no-op it rather than hand back a
-    task the job would then deadlock/crash awaiting."""
+    """A job's coroutine calling cancel_once on its own name happens for real
+    (e.g. a background review settling onto the same scheduler slot). Cancelling
+    (and the caller then awaiting) yourself is always wrong, so cancel_once must
+    recognize and no-op it rather than hand back a task the job would then
+    deadlock/crash awaiting."""
     sched = EventScheduler()
     sched.start()
     completed = asyncio.Event()

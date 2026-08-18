@@ -81,17 +81,6 @@ async def run_world_fix_agent(rubric: str) -> str:
     )
 
 
-async def cancel_active_world_review_or_fix(novel_id: str) -> None:
-    """Call before an interactive world-dimension write touches the bible: cancel and await
-    any in-flight review/fix job so a fix agent write can't race the user's own edit."""
-    from api.services.scheduler import SCHEDULER
-
-    task = SCHEDULER.cancel_once(f"world-review-run:{novel_id}")
-    if task is not None:
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
-
-
 async def _run_world_review(novel_id: str, params: _PendingReview) -> None:
     from repositories import get_world_repo
 

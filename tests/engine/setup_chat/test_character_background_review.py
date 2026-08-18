@@ -46,42 +46,6 @@ def test_schedule_character_quality_review_registers_a_dedup_once_event(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_cancel_active_character_fix_awaits_cancelled_task(monkeypatch):
-    import asyncio
-
-    from engine.setup_chat import character_background_review as cbr
-
-    async def long_running():
-        await asyncio.sleep(3600)
-
-    task = asyncio.create_task(long_running())
-    captured_name = {}
-
-    def fake_cancel_once(name):
-        captured_name["name"] = name
-        task.cancel()
-        return task
-
-    import api.services.scheduler as sched
-    monkeypatch.setattr(sched.SCHEDULER, "cancel_once", fake_cancel_once)
-
-    await cbr.cancel_active_character_fix("n", "甲")
-
-    assert captured_name["name"] == "character-fix:n:甲"
-    assert task.cancelled()
-
-
-@pytest.mark.asyncio
-async def test_cancel_active_character_fix_noop_when_nothing_running(monkeypatch):
-    from engine.setup_chat import character_background_review as cbr
-
-    import api.services.scheduler as sched
-    monkeypatch.setattr(sched.SCHEDULER, "cancel_once", lambda name: None)
-
-    await cbr.cancel_active_character_fix("n", "甲")  # must not raise
-
-
-@pytest.mark.asyncio
 async def test_run_character_review_notifies_pass_without_fix_agent(monkeypatch):
     from engine.setup_chat import character_background_review as cbr
 
@@ -158,6 +122,39 @@ async def test_run_character_review_runs_fix_agent_then_notifies_on_rewrite(monk
     assert novel_id == "n"
     assert "已自动修复" in summary
     assert "已把因果锚点" in summary
+
+
+@pytest.mark.asyncio
+async def test_run_character_review_skips_notify_when_fix_write_loses_cas_race(monkeypatch):
+    from engine.setup_chat import character_background_review as cbr
+
+    class _FakeRepo:
+        def list_raw(self):
+            return [{"name": "甲", "given_name": "甲"}]
+
+    monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
+
+    async def fake_run_cast_review(char):
+        return _rewrite("人设扁平")
+
+    monkeypatch.setattr(
+        "engine.setup_chat.setup_quality_review.run_cast_review", fake_run_cast_review,
+    )
+    monkeypatch.setattr(
+        "engine.setup_chat.setup_quality_review.active_hooks", lambda names: [],
+    )
+
+    async def fake_fix_agent(name, rubric):
+        return "角色「甲」在你读取之后已被修改，写入已取消。请重新读取最新数据后再改。"
+
+    monkeypatch.setattr(cbr, "run_character_fix_agent", fake_fix_agent)
+
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
+
+    await cbr._run_character_review("n", "甲")
+
+    assert hub.notices == []
 
 
 @pytest.mark.asyncio
@@ -465,7 +462,7 @@ async def test_run_character_review_does_not_rebroadcast_started_when_overlappin
 
 @pytest.mark.asyncio
 async def test_run_character_review_cancelled_during_started_broadcast_still_emits_done(monkeypatch):
-    """Regression: cancel_active_character_fix can land while the job is still suspended
+    """Regression: cancellation can land while the job is still suspended
     inside the 'character_review_started' broadcast await -- i.e. before mark_review_active
     has run. If that cancellation isn't inside the try/finally, clear_review_active/
     character_review_done never fire and the frontend toast is stranded on forever, even

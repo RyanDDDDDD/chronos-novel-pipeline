@@ -20,3 +20,9 @@ class WorldRepository:
     def save(self, data: dict, path: str | None = None) -> None:
         p = path if path is not None else world_bible_path()
         self._store.save_doc("world_bible", p, data)
+
+    def get_with_version(self) -> tuple[dict, int] | None:
+        return self._store.get_doc_with_version("world_bible")
+
+    def save_if_version_matches(self, data: dict, expected_version: int) -> int | None:
+        return self._store.save_doc_if_version_matches("world_bible", data, expected_version)
