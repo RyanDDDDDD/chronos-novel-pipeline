@@ -88,63 +88,6 @@ async def test_generate_appends_without_wiping_prior(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_generate_one_chapter_replace_cancels_active_review_before_proceeding(
-    monkeypatch, tmp_path,
-):
-    _patch_plot(monkeypatch, tmp_path)
-    monkeypatch.setattr("utils.paths.active_novel_id", lambda: "n")
-
-    cancel_calls: list[tuple[str, int, bool]] = []
-
-    async def fake_cancel(novel_id, chapter, *, restarting=True):
-        cancel_calls.append((novel_id, chapter, restarting))
-
-    monkeypatch.setattr(
-        "engine.setup_chat.skeleton_background_review.cancel_active_review", fake_cancel,
-    )
-
-    await generate_one_chapter.ainvoke(
-        {"chapter_index": 1, "title": "旧", "core_xp": ["基调"], "stages": [_stage()]},
-    )
-    cancel_calls.clear()
-
-    out = await generate_one_chapter.ainvoke(
-        {"chapter_index": 1, "title": "新", "core_xp": ["基调"], "stages": [_stage("新场景")]},
-    )
-
-    assert cancel_calls == [("n", 1, False)]
-    assert "更新" in out
-    data = _plot_raw()
-    assert data[0]["title"] == "新"
-
-
-@pytest.mark.asyncio
-async def test_generate_one_chapter_append_does_not_cancel_review(monkeypatch, tmp_path):
-    _patch_plot(monkeypatch, tmp_path)
-    monkeypatch.setattr("utils.paths.active_novel_id", lambda: "n")
-
-    cancel_calls: list[tuple[str, int]] = []
-
-    async def fake_cancel(novel_id, chapter, *, restarting=True):
-        cancel_calls.append((novel_id, chapter))
-
-    monkeypatch.setattr(
-        "engine.setup_chat.skeleton_background_review.cancel_active_review", fake_cancel,
-    )
-
-    await generate_one_chapter.ainvoke(
-        {"chapter_index": 1, "title": "一", "core_xp": ["基调"], "stages": [_stage()]},
-    )
-    cancel_calls.clear()
-
-    await generate_one_chapter.ainvoke(
-        {"chapter_index": 2, "title": "二", "core_xp": ["基调"], "stages": [_stage("二")]},
-    )
-
-    assert cancel_calls == []
-
-
-@pytest.mark.asyncio
 async def test_generate_replaces_existing_chapter(monkeypatch, tmp_path):
     _patch_plot(monkeypatch, tmp_path)
     await generate_one_chapter.ainvoke(
@@ -664,10 +607,8 @@ async def test_patch_chapter_core_skips_review_when_run_review_false(monkeypatch
 
 @pytest.mark.asyncio
 async def test_patch_chapter_core_cancels_active_review_before_proceeding(monkeypatch, tmp_path):
-    """Instead of rejecting, patch_chapter now cancels the in-flight review job (via
-    cancel_active_review) and proceeds with its own normal edit -- confirmed here by mocking
-    cancel_active_review and asserting it was awaited with the right args, and that the patch
-    itself still goes through."""
+    """patch_chapter proceeds with a normal edit even if a review job is notionally in flight
+    -- CAS (not preemptive cancel) is now the concurrency guard."""
     seed_plot([{
         "chapter": 2, "title": "第二章", "core_xp": [],
         "stages": [{"stage_num": 1, "title": "开场", "location": "客厅", "description": "旧描述",
@@ -679,15 +620,6 @@ async def test_patch_chapter_core_cancels_active_review_before_proceeding(monkey
     )
     monkeypatch.setattr("utils.paths.active_novel_id", lambda: "n")
 
-    cancel_calls = []
-
-    async def fake_cancel(novel_id, chapter):
-        cancel_calls.append((novel_id, chapter))
-
-    monkeypatch.setattr(
-        "engine.setup_chat.skeleton_background_review.cancel_active_review", fake_cancel,
-    )
-
     from engine.setup_chat.tools import _patch_chapter_core
 
     ok, msg = await _patch_chapter_core(
@@ -696,7 +628,6 @@ async def test_patch_chapter_core_cancels_active_review_before_proceeding(monkey
     )
 
     assert ok is True
-    assert cancel_calls == [("n", 2)]
     saved = _plot_raw()
     assert saved[0]["stages"][0]["beats"][0]["text"] == "新拍"
 
@@ -715,13 +646,6 @@ async def test_patch_chapter_core_reschedules_review_when_chapter_still_complete
         lambda: {"character_names": ["甲"], "archetypes": ["天真烂漫型"]},
     )
     monkeypatch.setattr("utils.paths.active_novel_id", lambda: "n")
-
-    async def noop_cancel(novel_id, chapter):
-        pass
-
-    monkeypatch.setattr(
-        "engine.setup_chat.skeleton_background_review.cancel_active_review", noop_cancel,
-    )
 
     import engine.setup_chat.skeleton_pipeline as sp
 
@@ -760,13 +684,6 @@ async def test_patch_chapter_core_skips_reschedule_when_is_reviewed(monkeypatch,
     )
     monkeypatch.setattr("utils.paths.active_novel_id", lambda: "n")
 
-    async def noop_cancel(novel_id, chapter):
-        pass
-
-    monkeypatch.setattr(
-        "engine.setup_chat.skeleton_background_review.cancel_active_review", noop_cancel,
-    )
-
     scheduled = []
     monkeypatch.setattr(
         "engine.setup_chat.skeleton_background_review.schedule_chapter_review_fix",
@@ -803,12 +720,6 @@ async def test_patch_chapter_core_schedules_cascade_scoped_to_chapter_roster(mon
     monkeypatch.setattr(
         "engine.memory_recall.entity_index.scan_characters",
         lambda text: [n for n in ("甲", "乙") if n in text],
-    )
-
-    async def noop_cancel(novel_id, chapter):
-        pass
-    monkeypatch.setattr(
-        "engine.setup_chat.skeleton_background_review.cancel_active_review", noop_cancel,
     )
 
     captured = {}

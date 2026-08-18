@@ -46,19 +46,11 @@ def _no_relationship_inference(monkeypatch):
     )
 
 
-async def _noop_coro():
-    return None
-
-
 @pytest.fixture(autouse=True)
 def _no_character_review_scheduling(monkeypatch):
     monkeypatch.setattr(
         "engine.setup_chat.character_background_review.schedule_character_quality_review",
         lambda name, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.cancel_active_character_fix",
-        lambda novel_id, name: _noop_coro(),
     )
 
 
@@ -824,23 +816,15 @@ async def test_edit_character_persists_and_schedules_review_under_new_name(monke
         "engine.setup_chat.character_background_review.schedule_character_quality_review",
         lambda name, **_kwargs: scheduled.append(name),
     )
-    cancelled = []
-
-    async def fake_cancel(novel_id, name):
-        cancelled.append((novel_id, name))
-
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.cancel_active_character_fix", fake_cancel,
-    )
-    monkeypatch.setattr("utils.paths.active_novel_id", lambda: "n")
 
     args = _args("甲")
     args["given_name"] = "甲改名"
     ok, msg, char = await _edit_character_core(name="甲", **args)
 
     assert ok is True and char is not None
-    assert cancelled == [("n", "甲")]  # cancels the OLD identity's in-flight fix
     assert scheduled == ["甲改名"]  # schedules review under the NEW identity
+    assert any(c.get("name") == "甲改名" for c in lore_raw())
+    del tmp_path, msg
 
 
 @pytest.mark.asyncio
@@ -862,30 +846,3 @@ async def test_edit_character_no_longer_calls_gate_character(monkeypatch, tmp_pa
     args = _args("甲")
     ok, msg, char = await _edit_character_core(name="甲", **args)
     assert ok is True
-
-
-@pytest.mark.asyncio
-async def test_delete_character_core_cancels_active_fix_for_deleted_name(monkeypatch, tmp_path):
-    _patch_empty_plot(monkeypatch, tmp_path)
-    seed_lore([_full_char("甲"), _full_char("乙")])
-    monkeypatch.setattr(
-        "engine.archive.archive_view.delete_character_archives",
-        lambda name: {"removed_stages": 0, "deleted_chapters": []},
-    )
-    monkeypatch.setattr("engine.setup_chat.timeline_auto.schedule_timeline_cascade", lambda *a, **k: None)
-    monkeypatch.setattr("utils.paths.active_novel_id", lambda: "n")
-    cancelled = []
-
-    async def fake_cancel(novel_id, name):
-        cancelled.append((novel_id, name))
-
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.cancel_active_character_fix", fake_cancel,
-    )
-
-    from engine.setup_chat.tools import _delete_character_core
-
-    ok, msg, detail = await _delete_character_core("甲")
-
-    assert ok is True
-    assert cancelled == [("n", "甲")]

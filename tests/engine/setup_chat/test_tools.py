@@ -411,12 +411,18 @@ async def test_edit_character_core_reextracts_when_physique_changes(monkeypatch)
         def save_all(self, roster):
             saved["roster"] = roster
 
+        def get_character_with_version(self, name):
+            for c in self.list_raw():
+                if c.get("name") == name:
+                    return dict(c), 1
+            return None
+
+        def save_character_if_version_matches(self, name, data, expected_version):
+            saved["roster"] = [data]
+            return 2
+
     monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
     monkeypatch.setattr("engine.setup_chat.tools.validate_character_edit", lambda char, roster, **_kw: [])
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.cancel_active_character_fix",
-        lambda novel_id, name: _async_none(),
-    )
     monkeypatch.setattr(
         "engine.setup_chat.character_background_review.schedule_character_quality_review",
         lambda name, **_kwargs: None,
@@ -470,12 +476,18 @@ async def test_edit_character_core_keeps_cache_when_appearance_unchanged(monkeyp
         def save_all(self, roster):
             saved["roster"] = roster
 
+        def get_character_with_version(self, name):
+            for c in self.list_raw():
+                if c.get("name") == name:
+                    return dict(c), 1
+            return None
+
+        def save_character_if_version_matches(self, name, data, expected_version):
+            saved["roster"] = [data]
+            return 2
+
     monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
     monkeypatch.setattr("engine.setup_chat.tools.validate_character_edit", lambda char, roster, **_kw: [])
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.cancel_active_character_fix",
-        lambda novel_id, name: _async_none(),
-    )
     monkeypatch.setattr(
         "engine.setup_chat.character_background_review.schedule_character_quality_review",
         lambda name, **_kwargs: None,
@@ -532,12 +544,18 @@ async def test_edit_character_core_applies_manual_visual_tags_override(monkeypat
         def save_all(self, roster):
             saved["roster"] = roster
 
+        def get_character_with_version(self, name):
+            for c in self.list_raw():
+                if c.get("name") == name:
+                    return dict(c), 1
+            return None
+
+        def save_character_if_version_matches(self, name, data, expected_version):
+            saved["roster"] = [data]
+            return 2
+
     monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
     monkeypatch.setattr("engine.setup_chat.tools.validate_character_edit", lambda char, roster, **_kw: [])
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.cancel_active_character_fix",
-        lambda novel_id, name: _async_none(),
-    )
     monkeypatch.setattr(
         "engine.setup_chat.character_background_review.schedule_character_quality_review",
         lambda name, **_kwargs: None,
@@ -597,12 +615,18 @@ async def test_edit_character_core_appearance_change_still_reextracts_over_manua
         def save_all(self, roster):
             saved["roster"] = roster
 
+        def get_character_with_version(self, name):
+            for c in self.list_raw():
+                if c.get("name") == name:
+                    return dict(c), 1
+            return None
+
+        def save_character_if_version_matches(self, name, data, expected_version):
+            saved["roster"] = [data]
+            return 2
+
     monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
     monkeypatch.setattr("engine.setup_chat.tools.validate_character_edit", lambda char, roster, **_kw: [])
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.cancel_active_character_fix",
-        lambda novel_id, name: _async_none(),
-    )
     monkeypatch.setattr(
         "engine.setup_chat.character_background_review.schedule_character_quality_review",
         lambda name, **_kwargs: None,
@@ -634,7 +658,3 @@ async def test_edit_character_core_appearance_change_still_reextracts_over_manua
     assert ok is True
     assert schedule_calls == ["甲"]
     assert saved["roster"][0]["portrait_visual_tags"] == "1girl, hand-typed tags"
-
-
-async def _async_none():
-    return None

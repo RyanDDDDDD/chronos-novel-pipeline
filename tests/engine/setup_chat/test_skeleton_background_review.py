@@ -94,6 +94,20 @@ class _FakeRepo:
     def list_raw(self):
         return self.chapters
 
+    def get_outline_with_version(self, chapter):
+        ch = next((c for c in self.chapters if c.get("chapter") == chapter), None)
+        if ch is None:
+            return None
+        return ch, 1
+
+    def save_chapter_if_version_matches(self, chapter, data, expected_version):
+        for i, c in enumerate(self.chapters):
+            if c.get("chapter") == chapter:
+                self.chapters[i] = data
+                self.saved.append([dict(c) for c in self.chapters])
+                return expected_version + 1
+        return None
+
     def save_all(self, chapters):
         self.saved.append([dict(c) for c in chapters])
         self.chapters = chapters
@@ -280,8 +294,7 @@ async def test_run_chapter_review_fix_cancellation_leaves_active_flag_set_and_sk
     monkeypatch,
 ):
     """A cancelled run must not broadcast done, must not clear _ACTIVE_REVIEWS, and must not
-    fire the chat notification -- cancel_active_review (this task's other new function) is
-    what broadcasts "restarted" instead, from the caller's side."""
+    fire the chat notification."""
     from engine.setup_chat import skeleton_background_review as sbr
     from engine.setup_chat import skeleton_pipeline as sp
 
@@ -309,84 +322,6 @@ async def test_run_chapter_review_fix_cancellation_leaves_active_flag_set_and_sk
     assert sp.is_review_active("n", 3) is True  # still marked active, not cleared
     assert notify_calls == []
     assert "skeleton_review_done" not in [b["type"] for b in broadcasts]
-
-
-@pytest.mark.asyncio
-async def test_cancel_active_review_noop_when_nothing_running(monkeypatch):
-    from engine.setup_chat.skeleton_background_review import cancel_active_review
-
-    broadcasts = []
-
-    class _FakeHub:
-        async def broadcast(self, ev):
-            broadcasts.append(ev)
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-    import api.services.scheduler as sched
-    monkeypatch.setattr(sched.SCHEDULER, "cancel_once", lambda name: None)
-
-    await cancel_active_review("n", 3)
-
-    assert broadcasts == []
-
-
-@pytest.mark.asyncio
-async def test_cancel_active_review_without_restart_clears_flag_and_broadcasts_done(monkeypatch):
-    from engine.setup_chat.skeleton_background_review import cancel_active_review
-
-    import engine.setup_chat.skeleton_pipeline as sp
-
-    sp._ACTIVE_REVIEWS.clear()
-    sp.mark_review_active("n", 3)
-
-    broadcasts = []
-
-    class _FakeHub:
-        async def broadcast(self, ev):
-            broadcasts.append(ev)
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
-    import api.services.scheduler as sched
-    monkeypatch.setattr(sched.SCHEDULER, "cancel_once", lambda name: None)
-
-    await cancel_active_review("n", 3, restarting=False)
-
-    assert sp.is_review_active("n", 3) is False
-    assert broadcasts == [{"type": "skeleton_review_done", "novel_id": "n"}]
-
-
-@pytest.mark.asyncio
-async def test_cancel_active_review_cancels_awaits_and_broadcasts_restarted(monkeypatch):
-    from engine.setup_chat.skeleton_background_review import cancel_active_review
-
-    async def long_running():
-        await asyncio.sleep(3600)
-
-    task = asyncio.create_task(long_running())
-
-    broadcasts = []
-
-    class _FakeHub:
-        async def broadcast(self, ev):
-            broadcasts.append(ev)
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
-    captured_name = {}
-
-    def fake_cancel_once(name):
-        captured_name["name"] = name
-        task.cancel()
-        return task
-
-    import api.services.scheduler as sched
-    monkeypatch.setattr(sched.SCHEDULER, "cancel_once", fake_cancel_once)
-
-    await cancel_active_review("n", 3)
-
-    assert captured_name["name"] == "skeleton-chapter-fix:n:3"
-    assert broadcasts == [{"type": "skeleton_review_restarted", "novel_id": "n", "chapter": 3}]
 
 
 @pytest.mark.asyncio

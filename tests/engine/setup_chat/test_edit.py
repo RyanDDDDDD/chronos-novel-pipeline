@@ -161,6 +161,41 @@ async def test_edit_character_rename_conflict(monkeypatch, tmp_path):
     assert lore_raw()[0]["name"] == "甲"
 
 
+@pytest.mark.asyncio
+async def test_edit_character_rejects_stale_version(monkeypatch, tmp_path):
+    """Simulates a concurrent editor: `_edit_character_core`'s own version read is
+    monkeypatched to report an already-superseded version number (as if it read the character
+    just before another write landed) -- its CAS write must then be rejected instead of
+    silently overwriting. A tool call is a single synchronous read-then-write with no real
+    await boundary a second actor could race into, so this is the deterministic way to
+    reproduce "I read this, then someone else wrote, then I tried to write" in a test."""
+    del tmp_path
+    seed_lore([_full_char("甲")])
+
+    from repositories import get_lore_repo
+
+    # A write that "already landed" -- bumps the on-disk version by one.
+    char, version = get_lore_repo().get_character_with_version("甲")
+    get_lore_repo().save_character_if_version_matches("甲", char, version)
+
+    import repositories.sqlite_repositories as sqlite_repositories
+    real_get = sqlite_repositories.SqliteLoreRepository.get_character_with_version
+
+    def _stale_get(self, name):
+        result = real_get(self, name)
+        if result is None:
+            return None
+        data, _real_version = result
+        return data, version  # report the pre-bump version on purpose
+
+    monkeypatch.setattr(
+        sqlite_repositories.SqliteLoreRepository, "get_character_with_version", _stale_get,
+    )
+
+    out = await edit_character.ainvoke(_edit_args("甲"))
+    assert "已被修改" in out
+
+
 def test_agent_registers_edit_tools():
     import engine.setup_chat.agent as a
 

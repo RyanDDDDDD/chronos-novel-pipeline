@@ -11,7 +11,6 @@ notify_chat=False -- see tools.py::_edit_character_core / _add_character_core)."
 from __future__ import annotations
 
 import asyncio
-import contextlib
 
 from utils.paths import use_novel
 
@@ -94,19 +93,7 @@ def schedule_character_quality_review(name: str, *, notify_chat: bool = True) ->
 async def _on_character_review_timeout(novel_id: str, name: str) -> None:
     clear_review_active(novel_id, name)
     if not any_review_active(novel_id):
-        await _broadcast_character_review_event(novel_id, "character_review_done")
-
-
-async def cancel_active_character_fix(novel_id: str, name: str) -> None:
-    """Call before an interactive edit/delete touches this character: cancel and await any
-    in-flight review/fix job for it, so the fix agent can't race the user's own edit and
-    clobber it with a stale-context write."""
-    from api.services.scheduler import SCHEDULER
-
-    task = SCHEDULER.cancel_once(f"character-fix:{novel_id}:{name}")
-    if task is not None:
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        await _broadcast_character_review_event(novel_id, "character_review_done"    )
 
 
 async def run_character_fix_agent(name: str, rubric: str) -> str:
@@ -140,6 +127,7 @@ async def _run_character_review(novel_id: str, name: str, *, notify_chat: bool =
         if is_first:
             await _broadcast_character_review_event(novel_id, "character_review_started")
 
+        fix_stale = False
         with use_novel(novel_id):
             roster = get_lore_repo().list_raw()
             char = next((c for c in roster if isinstance(c, dict) and _name_key(c) == name), None)
@@ -159,6 +147,7 @@ async def _run_character_review(novel_id: str, name: str, *, notify_chat: bool =
                     feedback = f"{feedback}\n\n{block}" if feedback else block
                 try:
                     fix_report = await run_character_fix_agent(name, feedback)
+                    fix_stale = "已被修改" in fix_report
                     summary = f"「{name}」的角色卡审查发现以下问题：\n\n{feedback}\n\n已自动修复：{fix_report}"
                 except asyncio.CancelledError:
                     raise
@@ -166,7 +155,7 @@ async def _run_character_review(novel_id: str, name: str, *, notify_chat: bool =
                     summary = f"「{name}」的角色卡审查发现以下问题：\n\n{feedback}\n\n（自动修复异常：{exc}）"
                 summary = f"{summary}\n\n{_AUTO_RESOLVED_NOTICE}"
 
-        if notify_chat:
+        if notify_chat and not fix_stale:
             from api.routes import _hub_instance
 
             await _hub_instance().trigger_system_notice_turn(novel_id, summary)

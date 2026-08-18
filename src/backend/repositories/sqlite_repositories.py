@@ -34,6 +34,17 @@ class SqliteLoreRepository:
         roster.append(char)
         self._store.save_lore(roster)
 
+    def get_character_with_version(self, name: str) -> tuple[dict, int] | None:
+        return self._store.get_lore_with_version(name)
+
+    def save_character_if_version_matches(
+        self, name: str, data: dict, expected_version: int,
+    ) -> int | None:
+        return self._store.save_lore_if_version_matches(name, data, expected_version)
+
+    def delete_character_if_version_matches(self, name: str, expected_version: int) -> bool:
+        return self._store.delete_lore_if_version_matches(name, expected_version)
+
 
 class SqlitePlotRepository:
     def __init__(self, store: SqliteStore) -> None:
@@ -71,6 +82,17 @@ class SqlitePlotRepository:
         kept.append(chapter_data)
         kept.sort(key=lambda p: p.get("chapter", 0))
         self._store.save_plot(kept)
+
+    def get_outline_with_version(self, chapter: int) -> tuple[dict, int] | None:
+        return self._store.get_outline_with_version(chapter)
+
+    def save_chapter_if_version_matches(
+        self, chapter: int, data: dict, expected_version: int,
+    ) -> int | None:
+        return self._store.save_chapter_if_version_matches(chapter, data, expected_version)
+
+    def delete_chapter_if_version_matches(self, chapter: int, expected_version: int) -> bool:
+        return self._store.delete_chapter_if_version_matches(chapter, expected_version)
 
 
 class SqliteArchiveRepository:

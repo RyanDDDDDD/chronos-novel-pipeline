@@ -334,3 +334,175 @@ def test_get_archive_returns_none_for_unknown_character_without_raising(store):
 
 def test_evict_archive_for_unknown_character_returns_zero(store):
     assert store.evict_archive_for("查无此人") == 0
+
+
+def test_version_column_added_to_existing_db_without_it(tmp_path):
+    """Simulates one of the 17 already-migrated production novel DBs: a lore_characters/
+    plot_chapters/documents table that predates the version column. Opening a connection
+    against it must add the column (defaulting existing rows to version=1) without touching
+    existing data."""
+    import sqlite3
+
+    from repositories.sqlite_store import get_connection
+
+    db_path = str(tmp_path / "legacy.db")
+    # Build the tables as they existed before this migration -- no version column.
+    legacy_conn = sqlite3.connect(db_path)
+    legacy_conn.executescript("""
+        CREATE TABLE lore_characters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            data_json TEXT NOT NULL,
+            seq INTEGER NOT NULL
+        );
+        CREATE TABLE plot_chapters (
+            chapter INTEGER PRIMARY KEY,
+            data_json TEXT NOT NULL,
+            seq INTEGER NOT NULL
+        );
+        CREATE TABLE documents (
+            doc_key TEXT PRIMARY KEY,
+            data_json TEXT NOT NULL
+        );
+    """)
+    legacy_conn.execute(
+        "INSERT INTO lore_characters (name, data_json, seq) VALUES (?, ?, ?)",
+        ("甲", '{"name": "甲"}', 0),
+    )
+    legacy_conn.commit()
+    legacy_conn.close()
+
+    conn = get_connection(db_path)
+    row = conn.execute("SELECT version FROM lore_characters WHERE name = ?", ("甲",)).fetchone()
+    assert row[0] == 1
+
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(plot_chapters)").fetchall()}
+    assert "version" in cols
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(documents)").fetchall()}
+    assert "version" in cols
+
+
+def test_version_column_migration_is_idempotent(tmp_path):
+    """Opening a connection twice (e.g. process restart) against a DB that already has the
+    version column must not raise (SQLite has no ADD COLUMN IF NOT EXISTS -- this is the
+    guard against a duplicate-column error on the second open)."""
+    from repositories.sqlite_store import close_connection, get_connection
+
+    db_path = str(tmp_path / "fresh.db")
+    get_connection(db_path)
+    close_connection(db_path)
+    get_connection(db_path)  # must not raise
+
+
+def test_save_doc_preserves_and_advances_version_across_calls(store):
+    store.save_doc("world_bible", "/unused", {"tone": "dark"})
+    _doc, v1 = store.get_doc_with_version("world_bible")
+    store.save_doc("world_bible", "/unused", {"tone": "darker"})
+    _doc, v2 = store.get_doc_with_version("world_bible")
+    assert v2 == v1 + 1  # not reset to 1
+
+
+def test_get_lore_with_version_returns_version_one_for_fresh_row(store):
+    char, version = store.get_lore_with_version("甲")
+    assert char["gender"] == "female"
+    assert version == 1
+
+
+def test_get_lore_with_version_returns_none_for_missing(store):
+    assert store.get_lore_with_version("无") is None
+
+
+def test_save_lore_if_version_matches_succeeds_and_bumps_version(store):
+    new_version = store.save_lore_if_version_matches("甲", {"name": "甲", "role": "new"}, 1)
+    assert new_version == 2
+    char, version = store.get_lore_with_version("甲")
+    assert char["role"] == "new"
+    assert version == 2
+
+
+def test_save_lore_if_version_matches_rejects_stale_version(store):
+    result = store.save_lore_if_version_matches("甲", {"name": "甲", "role": "stale"}, 99)
+    assert result is None
+    char, version = store.get_lore_with_version("甲")
+    assert char["role"] == "lead"  # unchanged
+    assert version == 1
+
+
+def test_delete_lore_if_version_matches_succeeds(store):
+    assert store.delete_lore_if_version_matches("甲", 1) is True
+    assert store.get_lore("甲") is None
+
+
+def test_delete_lore_if_version_matches_rejects_stale_version(store):
+    assert store.delete_lore_if_version_matches("甲", 99) is False
+    assert store.get_lore("甲") is not None
+
+
+def test_get_outline_with_version_returns_version_one(store):
+    outline, version = store.get_outline_with_version(1)
+    assert outline["title"] == "T"
+    assert version == 1
+
+
+def test_get_outline_with_version_returns_none_for_missing(store):
+    assert store.get_outline_with_version(999) is None
+
+
+def test_save_chapter_if_version_matches_succeeds_and_bumps_version(store):
+    new_version = store.save_chapter_if_version_matches(
+        1, {"chapter": 1, "title": "T-new", "stages": []}, 1,
+    )
+    assert new_version == 2
+    outline, version = store.get_outline_with_version(1)
+    assert outline["title"] == "T-new"
+    assert version == 2
+
+
+def test_save_chapter_if_version_matches_rejects_stale_version(store):
+    result = store.save_chapter_if_version_matches(
+        1, {"chapter": 1, "title": "stale", "stages": []}, 99,
+    )
+    assert result is None
+    outline, version = store.get_outline_with_version(1)
+    assert outline["title"] == "T"
+    assert version == 1
+
+
+def test_delete_chapter_if_version_matches_succeeds(store):
+    assert store.delete_chapter_if_version_matches(1, 1) is True
+    assert store.get_outline(1) is None
+
+
+def test_delete_chapter_if_version_matches_rejects_stale_version(store):
+    assert store.delete_chapter_if_version_matches(1, 99) is False
+    assert store.get_outline(1) is not None
+
+
+def test_get_doc_with_version_returns_none_for_missing(store):
+    assert store.get_doc_with_version("world_bible") is None
+
+
+def test_save_doc_if_version_matches_creates_at_version_one(store):
+    new_version = store.save_doc_if_version_matches("world_bible", {"tone": "dark"}, 0)
+    assert new_version == 1
+    doc, version = store.get_doc_with_version("world_bible")
+    assert doc["tone"] == "dark"
+    assert version == 1
+
+
+def test_save_doc_if_version_matches_succeeds_and_bumps_version(store):
+    store.save_doc_if_version_matches("world_bible", {"tone": "dark"}, 0)
+    new_version = store.save_doc_if_version_matches("world_bible", {"tone": "darker"}, 1)
+    assert new_version == 2
+    doc, version = store.get_doc_with_version("world_bible")
+    assert doc["tone"] == "darker"
+    assert version == 2
+
+
+def test_save_doc_if_version_matches_rejects_stale_version(store):
+    store.save_doc_if_version_matches("world_bible", {"tone": "dark"}, 0)
+    result = store.save_doc_if_version_matches("world_bible", {"tone": "stale"}, 99)
+    assert result is None
+    doc, version = store.get_doc_with_version("world_bible")
+    assert doc["tone"] == "dark"
+    assert version == 1

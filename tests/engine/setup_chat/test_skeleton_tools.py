@@ -60,6 +60,37 @@ async def test_write_skeleton_back_to_stage(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_write_chapter_skeleton_rejects_stale_version(monkeypatch, tmp_path):
+    _patch_plot(_PLOT)
+    _stub_writer(monkeypatch, {1: [{"text": "扩写后的丰富底稿…", "sensation_notes": []}]})
+
+    import repositories
+
+    # A write that "already landed" -- bumps chapter 1's on-disk version by one.
+    outline, version = repositories.get_plot_repo().get_outline_with_version(1)
+    repositories.get_plot_repo().save_chapter_if_version_matches(1, outline, version)
+
+    import repositories.sqlite_repositories as sqlite_repositories
+    real_get = sqlite_repositories.SqlitePlotRepository.get_outline_with_version
+
+    def _stale_get(self, chapter):
+        result = real_get(self, chapter)
+        if result is None:
+            return None
+        data, _real_version = result
+        return data, version  # report the pre-bump version on purpose
+
+    monkeypatch.setattr(
+        sqlite_repositories.SqlitePlotRepository, "get_outline_with_version", _stale_get,
+    )
+
+    out = await t.write_chapter_skeleton.ainvoke({
+        "chapter": 1, "stages": [{"stage_num": 1, "overview": ""}],
+    })
+    assert "已被修改" in out
+
+
+@pytest.mark.asyncio
 async def test_write_skeleton_bad_stage(monkeypatch, tmp_path):
     _patch_plot(_PLOT)
     out = await t.write_chapter_skeleton.ainvoke({
@@ -135,6 +166,12 @@ async def test_write_chapter_skeleton_clears_stage_markers_on_success(monkeypatc
     class _Repo:
         def list_raw(self):
             return [{"chapter": 2, "stages": [{"stage_num": 1}]}]
+        def get_outline_with_version(self, chapter):
+            if chapter != 2:
+                return None
+            return {"chapter": 2, "stages": [{"stage_num": 1}]}, 1
+        def save_chapter_if_version_matches(self, chapter, data, expected_version):
+            return expected_version + 1
         def save_all(self, chapters):
             pass
     monkeypatch.setattr("repositories.get_plot_repo", lambda: _Repo())
@@ -198,28 +235,6 @@ async def test_write_chapter_skeleton_dispatches_background_review_when_chapter_
     assert "审查" in out
     assert scheduled == [1]
     assert sp.is_review_active("n", 1) is True
-
-
-@pytest.mark.asyncio
-async def test_write_chapter_skeleton_cancels_active_review_before_writing(monkeypatch, tmp_path):
-    _patch_plot(_PLOT)
-    _stub_writer(monkeypatch)
-    monkeypatch.setattr("utils.paths.active_novel_id", lambda: "n")
-
-    cancel_calls = []
-
-    async def fake_cancel(novel_id, chapter):
-        cancel_calls.append((novel_id, chapter))
-
-    monkeypatch.setattr(
-        "engine.setup_chat.skeleton_background_review.cancel_active_review", fake_cancel,
-    )
-
-    await t.write_chapter_skeleton.ainvoke({
-        "chapter": 1, "stages": [{"stage_num": 1, "overview": ""}],
-    })
-
-    assert cancel_calls == [("n", 1)]
 
 
 @pytest.mark.asyncio
