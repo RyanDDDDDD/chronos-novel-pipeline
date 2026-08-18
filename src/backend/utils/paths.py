@@ -309,6 +309,12 @@ def alarms_log_path() -> str:
     return os.path.join(engine_logs_dir(), "alarms.ndjson")
 
 
+def setup_chat_tool_analysis_log_path() -> str:
+    """Per-turn structured record of setup_chat ReAct tool calls (engine.setup_chat.tool_trace):
+    full call list + repeat/error flag summary, one JSON line per turn."""
+    return os.path.join(PROJECT_ROOT, "logs", "setup_chat_tool_analysis.ndjson")
+
+
 def prompt_dump_path(chapter: int) -> str:
     """保存章节时由 prompt_parse 生成的本章最新一轮全量 prompt 可读文本(每次保存覆盖)。"""
     return os.path.join(PROJECT_ROOT, "logs", "parsed", f"chapter_{chapter:03d}_latest.txt")
