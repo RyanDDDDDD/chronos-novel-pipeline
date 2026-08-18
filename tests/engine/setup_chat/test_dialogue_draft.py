@@ -58,6 +58,28 @@ async def test_draft_beat_dialogue_omits_prev_text_block_when_empty(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_draft_beat_dialogue_uses_content_pack_intent_guidance_override(monkeypatch):
+    from context import content_packs as cp
+    from engine.setup_chat import dialogue_draft as dd
+
+    monkeypatch.setattr(
+        "engine.author_loop.dialogue_mode.cards.render_character_card",
+        lambda name, ch, sg, **kw: "卡",
+    )
+    monkeypatch.setattr(cp, "active_dialogue_intent_guidance", lambda: "SENTINEL台词意图引导")
+    captured = {}
+
+    async def fake_call(system, user, **kwargs):
+        captured["system"] = system
+        return ""
+    monkeypatch.setattr(dd, "_call_llm", fake_call)
+
+    await dd.draft_beat_dialogue(1, 1, "拍正文", ["甲"], "")
+    assert "SENTINEL台词意图引导" in captured["system"]
+    assert dd._DEFAULT_INTENT_GUIDANCE not in captured["system"]
+
+
+@pytest.mark.asyncio
 async def test_draft_beat_dialogue_degrades_to_empty_on_llm_failure(monkeypatch):
     from engine.setup_chat import dialogue_draft as dd
 
