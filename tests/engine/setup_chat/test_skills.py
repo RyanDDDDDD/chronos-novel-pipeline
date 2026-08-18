@@ -204,6 +204,47 @@ def test_expand_skill_placeholders_noop_without_token(tmp_path):
     assert skills.expand_skill_placeholders(body, [str(tmp_path)]) == body
 
 
+def test_expand_skill_placeholders_direction_lens_fallback_to_baseline(tmp_path, monkeypatch):
+    from context import content_packs as cp
+
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path / "empty")
+    cp.reload_content_packs()
+    try:
+        body = "前置文字，{{DIRECTION_GUIDANCE}}调工具。段落：{{LENS_GUIDANCE}}，调工具。"
+        out = skills.expand_skill_placeholders(body, [str(tmp_path)])
+        assert "{{DIRECTION_GUIDANCE}}" not in out
+        assert "{{LENS_GUIDANCE}}" not in out
+        assert skills._DEFAULT_DIRECTION_GUIDANCE in out
+        assert skills._DEFAULT_LENS_GUIDANCE in out
+    finally:
+        cp.reload_content_packs()
+
+
+def test_expand_skill_placeholders_direction_lens_use_pack_override(tmp_path, monkeypatch):
+    import textwrap
+
+    from context import content_packs as cp
+
+    pack_dir = tmp_path / "fixture_pack"
+    pack_dir.mkdir()
+    (pack_dir / "hook.py").write_text(textwrap.dedent('''
+        from context.content_packs import ContentPack
+
+        CONTENT_PACK = ContentPack(
+            chapter_direction_guidance="SENTINEL方向引导",
+            stage_lens_guidance="SENTINEL分镜引导",
+        )
+    '''), encoding="utf-8")
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path)
+    cp.reload_content_packs()
+    try:
+        body = "{{DIRECTION_GUIDANCE}}／{{LENS_GUIDANCE}}"
+        out = skills.expand_skill_placeholders(body, [str(tmp_path)])
+        assert out == "SENTINEL方向引导／SENTINEL分镜引导"
+    finally:
+        cp.reload_content_packs()
+
+
 def test_address_self_ref_design_skill_exists_and_has_worked_example():
     from engine.setup_chat.skills import load_skill_body
     from utils.paths import SETUP_CHAT_SKILLS_DIR

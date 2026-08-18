@@ -226,3 +226,37 @@ def test_active_prose_style_extraction_prompt_reads_pack_declaration(monkeypatch
     '''), encoding="utf-8")
     monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path)
     assert cp.active_prose_style_extraction_prompt() == "SENTINEL文风抽取覆写"
+
+
+def test_active_chapter_direction_guidance_none_without_packs(monkeypatch, tmp_path):
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path / "empty")
+    assert cp.active_chapter_direction_guidance() is None
+
+
+def test_active_chapter_direction_guidance_reads_pack_declaration(monkeypatch, tmp_path):
+    pack_dir = tmp_path / "fixture_pack"
+    pack_dir.mkdir()
+    (pack_dir / "hook.py").write_text(textwrap.dedent('''
+        from context.content_packs import ContentPack
+
+        CONTENT_PACK = ContentPack(chapter_direction_guidance="SENTINEL方向引导")
+    '''), encoding="utf-8")
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path)
+    assert cp.active_chapter_direction_guidance() == "SENTINEL方向引导"
+
+
+def test_active_stage_lens_guidance_none_without_packs(monkeypatch, tmp_path):
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path / "empty")
+    assert cp.active_stage_lens_guidance() is None
+
+
+def test_active_stage_lens_guidance_reads_pack_declaration(monkeypatch, tmp_path):
+    pack_dir = tmp_path / "fixture_pack"
+    pack_dir.mkdir()
+    (pack_dir / "hook.py").write_text(textwrap.dedent('''
+        from context.content_packs import ContentPack
+
+        CONTENT_PACK = ContentPack(stage_lens_guidance="SENTINEL分镜引导")
+    '''), encoding="utf-8")
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path)
+    assert cp.active_stage_lens_guidance() == "SENTINEL分镜引导"
