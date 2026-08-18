@@ -104,8 +104,18 @@ Time-ordered event queue + shutdown hook. Only used on the app's asyncio loop (n
         """Cancels a currently-running "once" job by name; if it's still sitting in the heap
         unfired, removes it there instead. Returns the cancelled Task (caller may await it,
         suppressing CancelledError, to confirm it actually stopped before proceeding) or None
-        when there was nothing to cancel."""
+        when there was nothing to cancel.
+
+        No-ops (returns None, cancels nothing) when the job named is the one calling this --
+        a job's own coroutine can legitimately reach here (e.g. a background fix agent
+        re-invoking a guarded write tool on the very character/chapter it's already fixing,
+        which unconditionally cancels-then-awaits any in-flight job for that name before
+        writing). Cancelling yourself and then awaiting the result is always wrong (at best a
+        no-op cancel that still returns a task the caller can't safely await; at worst the
+        caller deadlocking/crashing awaiting its own task) -- treat it as nothing-to-cancel."""
         task = self._inflight_once_tasks.get(name)
+        if task is not None and task is asyncio.current_task():
+            return None
         if task is not None and not task.done():
             task.cancel()
             return task
