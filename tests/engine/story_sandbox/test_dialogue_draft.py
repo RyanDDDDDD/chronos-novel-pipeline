@@ -158,3 +158,20 @@ async def test_draft_dialogue_renders_turn_count_into_prompt():
     )
     assert "目标写出约 5 行台词" in seen["system"]
     assert "{turn_count}" not in seen["system"]
+
+
+@pytest.mark.asyncio
+async def test_draft_dialogue_uses_content_pack_intent_guidance_override(monkeypatch):
+    from context import content_packs as cp
+    from engine.story_sandbox import dialogue_draft as dd_mod
+
+    monkeypatch.setattr(cp, "active_dialogue_intent_guidance", lambda: "SENTINEL台词意图引导")
+    seen = {}
+
+    async def call_llm(system, _user):
+        seen["system"] = system
+        return ""
+
+    await draft_dialogue("继续", [], {}, [{"name": "甲", "card": "角色：甲"}], [], call_llm)
+    assert "SENTINEL台词意图引导" in seen["system"]
+    assert dd_mod._DEFAULT_INTENT_GUIDANCE not in seen["system"]

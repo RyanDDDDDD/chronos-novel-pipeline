@@ -26,13 +26,18 @@ from engine.story_sandbox.state import CharacterState, Round
 
 CallLLM = Callable[[str, str], Awaitable[str]]
 
-_DRAFT_SYS = (
+_DRAFT_SYS_PREFIX = (
     "根据下面的指令、最近的正文记录、在场角色的人设档案与当前状态，为这些角色写一段联合对话草稿——"
     "角色之间可以互相搭话、反驳、接话，也可以有人保持沉默；这段草稿只是给正式动笔的作者参考，"
     "不是最终成稿，目标写出约 {turn_count} 行台词，"
     "不必刻意凑数——判断这轮确实不需要对话时仍可输出空字符串。\n"
     "只有'在场角色'可以被安排台词/动作；'相关角色'（如果给出）只是背景/关系参考，"
     "绝不能给相关角色写台词、动作或任何登场表现。\n"
+)
+#题材中性 baseline：意图构造引导 + few-shot 示例，内容包（如成人向）可经
+#ContentPack.dialogue_intent_guidance 整段覆写，见 content_packs.py（与 setup_chat/
+#dialogue_draft.py 共用同一份覆写——两处 baseline 文案逐字相同，是姊妹版本）。
+_DEFAULT_INTENT_GUIDANCE = (
     "每一句台词落笔前，先想清楚这个角色此刻真正想要什么、想通过这句话达成什么——"
     "意图是台词设计里最重要的一环，必须写出来，不能只是把台词字面意思换个说法重复一遍，"
     "要点出台词背后没直说的目的/算计/心理落差；台词意图须源于该角色人设档案里的因果锚点"
@@ -40,9 +45,19 @@ _DRAFT_SYS = (
     "格式：逐行「角色名（意图：……；动作/心理：……）：台词」，例如：\n"
     "柚子（意图：想逼退对方又不想彻底撕破脸；动作/心理：后退半步，声音发紧）：你别过来。\n"
     "陆屿（意图：试探她的底线，看她会不会真的翻脸；动作/心理：伸手按住门框，笑意不达眼底）：我说了不听？\n"
+)
+_DRAFT_SYS_SUFFIX = (
     "只输出这样的台词草稿本身，不要输出任何解释或标题；如果判断这一轮不适合安排对话，"
     "直接输出空字符串。"
 )
+
+
+def _draft_sys(turn_count: int) -> str:
+    from context.content_packs import active_dialogue_intent_guidance
+
+    guidance = active_dialogue_intent_guidance() or _DEFAULT_INTENT_GUIDANCE
+    body = _DRAFT_SYS_PREFIX + guidance + _DRAFT_SYS_SUFFIX
+    return body.replace("{turn_count}", str(turn_count))
 
 
 def _cards_block(present_cards: list[dict], related_cards: list[dict]) -> str:
@@ -73,7 +88,7 @@ async def draft_dialogue(
 
     from engine.story_sandbox.prompt import recent_turns_block
 
-    system = _DRAFT_SYS.replace("{turn_count}", str(turn_count)) + _cards_block(present_cards, related_cards)
+    system = _draft_sys(turn_count) + _cards_block(present_cards, related_cards)
     system += f"\n\n最近的正文记录：\n{recent_turns_block(turns)}"
     system += f"\n\n各角色当前状态：{json.dumps(character_states, ensure_ascii=False)}"
     user = instruction if instruction.strip() else "本轮无特别指令，请直接续写。"

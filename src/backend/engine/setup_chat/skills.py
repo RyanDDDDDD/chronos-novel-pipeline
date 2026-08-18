@@ -178,6 +178,15 @@ def _load_reference(skill: str, fname: str, skills_dirs: list[str]) -> str | Non
 
 _PLOT_EXTENSION_KIND = "plot-extension"
 _PLOT_EXTENSIONS_TOKEN = "{{PLOT_EXTENSIONS}}"
+_DIRECTION_GUIDANCE_TOKEN = "{{DIRECTION_GUIDANCE}}"
+_LENS_GUIDANCE_TOKEN = "{{LENS_GUIDANCE}}"
+#题材中性 baseline：skeleton-expansion 步骤 2/3a 的候选构思引导，内容包（如成人向）可经
+#ContentPack.chapter_direction_guidance/stage_lens_guidance 整段覆写，见 content_packs.py。
+_DEFAULT_DIRECTION_GUIDANCE = (
+    "自己构思 **3-5 条真正不同的整体叙事走向**（差异在剧情怎么走、情绪节奏、角色分工），"
+    "禁涉及具体体位/姿势；"
+)
+_DEFAULT_LENS_GUIDANCE = "构思 2-4 个互不重复、且呼应全局走向的**突出角度**"
 
 
 def render_skill_index(skills_dirs: list[str]) -> str:
@@ -204,12 +213,21 @@ def render_plot_extension_menu(skills_dirs: list[str]) -> str:
 
 
 def expand_skill_placeholders(body: str, skills_dirs: list[str]) -> str:
-    """替换 skill 正文动态占位符（现仅 {{PLOT_EXTENSIONS}} → 拓展菜单）。
+    """替换 skill 正文动态占位符：{{PLOT_EXTENSIONS}} → 拓展菜单；{{DIRECTION_GUIDANCE}}/
+    {{LENS_GUIDANCE}} → 内容包覆写或题材中性 baseline 引导文案。
 
     让架构 skill 免手写、自动跟注册表长：加一个 plot-extension skill 就自动列出。"""
+    from context.content_packs import active_chapter_direction_guidance, active_stage_lens_guidance
+
     if _PLOT_EXTENSIONS_TOKEN in body:
         menu = render_plot_extension_menu(skills_dirs) or "（暂无可用剧情拓展）"
         body = body.replace(_PLOT_EXTENSIONS_TOKEN, menu)
+    if _DIRECTION_GUIDANCE_TOKEN in body:
+        guidance = active_chapter_direction_guidance() or _DEFAULT_DIRECTION_GUIDANCE
+        body = body.replace(_DIRECTION_GUIDANCE_TOKEN, guidance)
+    if _LENS_GUIDANCE_TOKEN in body:
+        guidance = active_stage_lens_guidance() or _DEFAULT_LENS_GUIDANCE
+        body = body.replace(_LENS_GUIDANCE_TOKEN, guidance)
     return body
 
 

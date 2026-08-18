@@ -56,6 +56,9 @@ class ContentPack:
     identity: str | None = None
     portrait_prompt_directive: str | None = None
     prose_style_extraction_prompt: str | None = None
+    chapter_direction_guidance: str | None = None
+    stage_lens_guidance: str | None = None
+    dialogue_intent_guidance: str | None = None
 
 
 #题材中性通用基线：不依赖任何 content pack 即可工作。
@@ -178,6 +181,34 @@ def active_prose_style_extraction_prompt() -> str | None:
     for pack in _packs():
         if pack.prose_style_extraction_prompt:
             return pack.prose_style_extraction_prompt
+    return None
+
+
+def active_chapter_direction_guidance() -> str | None:
+    """First pack-declared skeleton-expansion 全局方向构思引导覆写(章级 set_chapter_direction
+    前置步骤)，或 None——caller 落回自身中性默认引导文案。"""
+    for pack in _packs():
+        if pack.chapter_direction_guidance:
+            return pack.chapter_direction_guidance
+    return None
+
+
+def active_stage_lens_guidance() -> str | None:
+    """First pack-declared skeleton-expansion 分镜角度构思引导覆写(段级 set_stage_lens 前置步骤)，
+    或 None——caller 落回自身中性默认引导文案。"""
+    for pack in _packs():
+        if pack.stage_lens_guidance:
+            return pack.stage_lens_guidance
+    return None
+
+
+def active_dialogue_intent_guidance() -> str | None:
+    """First pack-declared dialogue-draft 意图构造引导覆写(含 few-shot 示例；构建期 setup_chat
+    与运行期 story_sandbox 的联合台词草稿共用同一份覆写)，或 None——caller 落回自身中性默认
+    引导文案。"""
+    for pack in _packs():
+        if pack.dialogue_intent_guidance:
+            return pack.dialogue_intent_guidance
     return None
 
 
