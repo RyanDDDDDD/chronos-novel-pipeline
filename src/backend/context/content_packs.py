@@ -59,6 +59,8 @@ class ContentPack:
     chapter_direction_guidance: str | None = None
     stage_lens_guidance: str | None = None
     dialogue_intent_guidance: str | None = None
+    plot_core_xp_guidance: str | None = None
+    plot_stage_guidance: str | None = None
 
 
 #题材中性通用基线：不依赖任何 content pack 即可工作。
@@ -209,6 +211,24 @@ def active_dialogue_intent_guidance() -> str | None:
     for pack in _packs():
         if pack.dialogue_intent_guidance:
             return pack.dialogue_intent_guidance
+    return None
+
+
+def active_plot_core_xp_guidance() -> str | None:
+    """First pack-declared plot-interview 章级 core_xp 构思引导覆写，或 None——caller 落回自身
+    中性默认引导文案。"""
+    for pack in _packs():
+        if pack.plot_core_xp_guidance:
+            return pack.plot_core_xp_guidance
+    return None
+
+
+def active_plot_stage_guidance() -> str | None:
+    """First pack-declared plot-interview 段级 stage description 构思引导覆写，或 None——caller
+    落回自身中性默认引导文案。"""
+    for pack in _packs():
+        if pack.plot_stage_guidance:
+            return pack.plot_stage_guidance
     return None
 
 

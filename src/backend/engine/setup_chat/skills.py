@@ -187,6 +187,12 @@ _DEFAULT_DIRECTION_GUIDANCE = (
     "禁涉及具体体位/姿势；"
 )
 _DEFAULT_LENS_GUIDANCE = "构思 2-4 个互不重复、且呼应全局走向的**突出角度**"
+_CORE_XP_GUIDANCE_TOKEN = "{{CORE_XP_GUIDANCE}}"
+_STAGE_DESCRIPTION_GUIDANCE_TOKEN = "{{STAGE_DESCRIPTION_GUIDANCE}}"
+#题材中性 baseline：plot-interview 章级 core_xp / 段级 stage description 的构思引导，内容包
+#（如成人向）可经 ContentPack.plot_core_xp_guidance/plot_stage_guidance 整段覆写。
+_DEFAULT_CORE_XP_GUIDANCE = "本章核心体验/卖点，几个关键词"
+_DEFAULT_STAGE_DESCRIPTION_GUIDANCE = "交代发生了什么、情绪与走向"
 
 
 def render_skill_index(skills_dirs: list[str]) -> str:
@@ -214,10 +220,16 @@ def render_plot_extension_menu(skills_dirs: list[str]) -> str:
 
 def expand_skill_placeholders(body: str, skills_dirs: list[str]) -> str:
     """替换 skill 正文动态占位符：{{PLOT_EXTENSIONS}} → 拓展菜单；{{DIRECTION_GUIDANCE}}/
-    {{LENS_GUIDANCE}} → 内容包覆写或题材中性 baseline 引导文案。
+    {{LENS_GUIDANCE}}/{{CORE_XP_GUIDANCE}}/{{STAGE_DESCRIPTION_GUIDANCE}} → 内容包覆写或
+    题材中性 baseline 引导文案。
 
     让架构 skill 免手写、自动跟注册表长：加一个 plot-extension skill 就自动列出。"""
-    from context.content_packs import active_chapter_direction_guidance, active_stage_lens_guidance
+    from context.content_packs import (
+        active_chapter_direction_guidance,
+        active_plot_core_xp_guidance,
+        active_plot_stage_guidance,
+        active_stage_lens_guidance,
+    )
 
     if _PLOT_EXTENSIONS_TOKEN in body:
         menu = render_plot_extension_menu(skills_dirs) or "（暂无可用剧情拓展）"
@@ -228,6 +240,12 @@ def expand_skill_placeholders(body: str, skills_dirs: list[str]) -> str:
     if _LENS_GUIDANCE_TOKEN in body:
         guidance = active_stage_lens_guidance() or _DEFAULT_LENS_GUIDANCE
         body = body.replace(_LENS_GUIDANCE_TOKEN, guidance)
+    if _CORE_XP_GUIDANCE_TOKEN in body:
+        guidance = active_plot_core_xp_guidance() or _DEFAULT_CORE_XP_GUIDANCE
+        body = body.replace(_CORE_XP_GUIDANCE_TOKEN, guidance)
+    if _STAGE_DESCRIPTION_GUIDANCE_TOKEN in body:
+        guidance = active_plot_stage_guidance() or _DEFAULT_STAGE_DESCRIPTION_GUIDANCE
+        body = body.replace(_STAGE_DESCRIPTION_GUIDANCE_TOKEN, guidance)
     return body
 
 
