@@ -245,6 +245,47 @@ def test_expand_skill_placeholders_direction_lens_use_pack_override(tmp_path, mo
         cp.reload_content_packs()
 
 
+def test_expand_skill_placeholders_plot_interview_fallback_to_baseline(tmp_path, monkeypatch):
+    from context import content_packs as cp
+
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path / "empty")
+    cp.reload_content_packs()
+    try:
+        body = "core_xp（{{CORE_XP_GUIDANCE}}）。段落（{{STAGE_DESCRIPTION_GUIDANCE}}；其它）。"
+        out = skills.expand_skill_placeholders(body, [str(tmp_path)])
+        assert "{{CORE_XP_GUIDANCE}}" not in out
+        assert "{{STAGE_DESCRIPTION_GUIDANCE}}" not in out
+        assert skills._DEFAULT_CORE_XP_GUIDANCE in out
+        assert skills._DEFAULT_STAGE_DESCRIPTION_GUIDANCE in out
+    finally:
+        cp.reload_content_packs()
+
+
+def test_expand_skill_placeholders_plot_interview_use_pack_override(tmp_path, monkeypatch):
+    import textwrap
+
+    from context import content_packs as cp
+
+    pack_dir = tmp_path / "fixture_pack"
+    pack_dir.mkdir()
+    (pack_dir / "hook.py").write_text(textwrap.dedent('''
+        from context.content_packs import ContentPack
+
+        CONTENT_PACK = ContentPack(
+            plot_core_xp_guidance="SENTINEL章纲卖点引导",
+            plot_stage_guidance="SENTINEL场景概述引导",
+        )
+    '''), encoding="utf-8")
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path)
+    cp.reload_content_packs()
+    try:
+        body = "{{CORE_XP_GUIDANCE}}／{{STAGE_DESCRIPTION_GUIDANCE}}"
+        out = skills.expand_skill_placeholders(body, [str(tmp_path)])
+        assert out == "SENTINEL章纲卖点引导／SENTINEL场景概述引导"
+    finally:
+        cp.reload_content_packs()
+
+
 def test_address_self_ref_design_skill_exists_and_has_worked_example():
     from engine.setup_chat.skills import load_skill_body
     from utils.paths import SETUP_CHAT_SKILLS_DIR

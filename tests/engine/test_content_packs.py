@@ -277,3 +277,37 @@ def test_active_dialogue_intent_guidance_reads_pack_declaration(monkeypatch, tmp
     '''), encoding="utf-8")
     monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path)
     assert cp.active_dialogue_intent_guidance() == "SENTINEL台词意图引导"
+
+
+def test_active_plot_core_xp_guidance_none_without_packs(monkeypatch, tmp_path):
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path / "empty")
+    assert cp.active_plot_core_xp_guidance() is None
+
+
+def test_active_plot_core_xp_guidance_reads_pack_declaration(monkeypatch, tmp_path):
+    pack_dir = tmp_path / "fixture_pack"
+    pack_dir.mkdir()
+    (pack_dir / "hook.py").write_text(textwrap.dedent('''
+        from context.content_packs import ContentPack
+
+        CONTENT_PACK = ContentPack(plot_core_xp_guidance="SENTINEL章纲卖点引导")
+    '''), encoding="utf-8")
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path)
+    assert cp.active_plot_core_xp_guidance() == "SENTINEL章纲卖点引导"
+
+
+def test_active_plot_stage_guidance_none_without_packs(monkeypatch, tmp_path):
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path / "empty")
+    assert cp.active_plot_stage_guidance() is None
+
+
+def test_active_plot_stage_guidance_reads_pack_declaration(monkeypatch, tmp_path):
+    pack_dir = tmp_path / "fixture_pack"
+    pack_dir.mkdir()
+    (pack_dir / "hook.py").write_text(textwrap.dedent('''
+        from context.content_packs import ContentPack
+
+        CONTENT_PACK = ContentPack(plot_stage_guidance="SENTINEL场景概述引导")
+    '''), encoding="utf-8")
+    monkeypatch.setattr(cp, "_packs_dir", lambda: tmp_path)
+    assert cp.active_plot_stage_guidance() == "SENTINEL场景概述引导"
