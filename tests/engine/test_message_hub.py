@@ -3018,6 +3018,52 @@ async def test_reset_setup_chat_resets_mode_to_manual():
 
 
 @pytest.mark.asyncio
+async def test_reset_setup_chat_broadcasts_mode_change_when_it_flips():
+    from api.services.message_hub import MessageHub
+    from engine.setup_chat.mode import is_auto_mode, set_auto_mode
+
+    set_auto_mode(True)
+    try:
+        hub = MessageHub()
+        events = []
+
+        async def fake_broadcast(ev):
+            events.append(ev)
+
+        hub.broadcast = fake_broadcast  # type: ignore[method-assign]
+        await hub.reset_setup_chat()
+        assert is_auto_mode() is False
+        assert events == [{"type": "setup_chat_mode_changed", "auto": False}]
+    finally:
+        set_auto_mode(False)
+
+
+@pytest.mark.asyncio
+async def test_reset_setup_chat_for_non_focused_novel_does_not_reset_mode(monkeypatch):
+    """novel_memory_scavenger evicts idle novels other than the currently-focused one
+    (see its `nid != focus` filter) -- that background eviction must not silently flip
+    the global AUTO flag off for whatever novel the user is actively working on."""
+    from api.services import message_hub as mh_mod
+    from engine.setup_chat.mode import is_auto_mode, set_auto_mode
+
+    monkeypatch.setattr(mh_mod, "active_novel_id", lambda: "focused-novel")
+    set_auto_mode(True)
+    try:
+        hub = mh_mod.MessageHub()
+        events = []
+
+        async def fake_broadcast(ev):
+            events.append(ev)
+
+        hub.broadcast = fake_broadcast  # type: ignore[method-assign]
+        await hub.reset_setup_chat("some-other-idle-novel")
+        assert is_auto_mode() is True
+        assert events == []
+    finally:
+        set_auto_mode(False)
+
+
+@pytest.mark.asyncio
 async def test_reset_setup_chat_invalidates_content_packs_cache(monkeypatch):
     """Regression: content_packs._packs() caches scan_content_packs() at module scope
     for the process lifetime. reset_setup_chat() is the natural rebuild boundary (see

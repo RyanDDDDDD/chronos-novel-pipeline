@@ -40,6 +40,18 @@ describe('setupChatSlice reducer', () => {
     expect(state.pendingChoice).toEqual({ question: '继续吗？', options: ['是', '否'] })
   })
 
+  it('setup_chat_mode_changed syncs autoMode regardless of hydratedNovel', () => {
+    const prev = { ...initial, autoMode: true, hydratedNovel: 'novel-a' }
+    // Backend fires this when a background reset (e.g. the idle novel memory scavenger
+    // evicting an unrelated novel) silently flips the process-global AUTO flag off --
+    // must resync even though the event carries no novel_id tying it to novel-a.
+    const state = setupChatReducer(
+      prev,
+      wsEventReceived({ type: 'setup_chat_mode_changed', auto: false }),
+    )
+    expect(state.autoMode).toBe(false)
+  })
+
   it('clearSetupChatPendingChoice clears it', () => {
     const prev = { ...initial, pendingChoice: { question: 'q', options: ['a'] } }
     expect(setupChatReducer(prev, clearSetupChatPendingChoice()).pendingChoice).toBeNull()

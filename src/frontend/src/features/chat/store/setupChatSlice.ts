@@ -240,6 +240,14 @@ const setupChatSlice = createSlice({
       .addCase(wsEventReceived, (state, action) => {
         const data = action.payload
         if (!data.type.startsWith('setup_chat_')) return
+        // auto mode is a process-global preference, not scoped to a novel (see mode.py) --
+        // handle it before the per-novel filter below so a background reset (e.g. the idle
+        // novel memory scavenger silently flipping it off) resyncs the button regardless of
+        // which novel is currently hydrated.
+        if (data.type === 'setup_chat_mode_changed') {
+          if (data.auto !== undefined) state.autoMode = data.auto
+          return
+        }
         const eventNovelId = data.novel_id
         if (state.hydratedNovel && eventNovelId && eventNovelId !== state.hydratedNovel) return
         if (data.type === 'setup_chat_queued') return
