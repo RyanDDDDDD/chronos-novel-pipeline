@@ -1,15 +1,20 @@
 """DeepSeek-aware ChatOpenAI: round-trip reasoning_content for thinking + tools.
 
-langchain_openai drops ``reasoning_content`` on both ingest and egress. DeepSeek's
-thinking-mode API requires every assistant message that performed a tool call to
-carry ``reasoning_content`` when replayed, or the next request returns HTTP 400."""
+langchain_openai drops ``reasoning_content`` on both ingest and egress -- including
+streamed deltas, where upstream's ``_convert_delta_to_message_chunk`` only lifts
+``function_call``/``tool_calls`` into ``additional_kwargs`` and silently ignores any
+other field. DeepSeek's thinking-mode API requires every assistant message that
+performed a tool call to carry ``reasoning_content`` when replayed, or the next
+request returns HTTP 400 -- so callers that stream (e.g. setup_chat's
+``astream_events``) need it captured from chunks too, not just non-streaming
+``_create_chat_result``."""
 from __future__ import annotations
 
 from typing import Any
 
 import openai
-from langchain_core.messages import AIMessage
-from langchain_core.outputs import ChatResult
+from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.outputs import ChatGenerationChunk, ChatResult
 from langchain_openai import ChatOpenAI
 
 
@@ -66,3 +71,24 @@ class DeepSeekChatOpenAI(ChatOpenAI):
                 "reasoning_content": rc,
             }
         return result
+
+    def _convert_chunk_to_generation_chunk(
+        self,
+        chunk: dict,
+        default_chunk_class: type,
+        base_generation_info: dict | None,
+    ) -> ChatGenerationChunk | None:
+        generation_chunk = super()._convert_chunk_to_generation_chunk(
+            chunk, default_chunk_class, base_generation_info
+        )
+        if generation_chunk is None or not isinstance(generation_chunk.message, AIMessageChunk):
+            return generation_chunk
+        choices = chunk.get("choices") or []
+        delta = choices[0].get("delta") if choices else None
+        rc = (delta or {}).get("reasoning_content")
+        if rc:
+            generation_chunk.message.additional_kwargs = {
+                **(generation_chunk.message.additional_kwargs or {}),
+                "reasoning_content": rc,
+            }
+        return generation_chunk
