@@ -698,12 +698,20 @@ Start the main writer's paragraph-by-paragraph writing cycle: progress/paragraph
         """Discard this novel's setup-chat agent instance. novel_id=None resets the currently
         active novel's instance (existing callers -- SCHEDULER's on_stop hook, delete-novel
         cleanup -- keep working unchanged). Does not interrupt an in-progress round for that
-        novel; if one is running, only the reference is cleared, not the connection."""
+        novel; if one is running, only the reference is cleared, not the connection.
+
+        Only clears the global AUTO flag when the novel being reset is the currently-focused
+        one. Without this guard, novel_memory_scavenger's background eviction of an unrelated
+        idle novel (deliberately never the focused one -- see its `nid != focus` filter) would
+        silently flip AUTO off for whatever novel the user is actively working on, with no
+        frontend signal (found live, 2026-08-21)."""
         from context.content_packs import reload_content_packs
-        from engine.setup_chat.mode import set_auto_mode
+        from engine.setup_chat.mode import is_auto_mode, set_auto_mode
 
         nid = novel_id or active_novel_id()
-        set_auto_mode(False)  # auto mode is a per-session convenience, not a per-novel setting
+        if nid == active_novel_id() and is_auto_mode():
+            set_auto_mode(False)  # auto mode is a per-session convenience, not a per-novel setting
+            await self.broadcast({"type": "setup_chat_mode_changed", "auto": False})
         reload_content_packs()
         agent = self._setup_chat_agents.pop(nid, None)
         t = self._setup_chat_tasks.get(nid)

@@ -815,6 +815,9 @@ Receive a user message and run a setting dialog; the output is broadcast via ws.
         body = await request.json()
         auto = bool((body or {}).get("auto", False)) if isinstance(body, dict) else False
         set_auto_mode(auto)
+        #broadcast so other connected clients (multi-tab) stay in sync with this
+        #process-global flag -- mirrors reset_setup_chat's silent-flip fix.
+        await _hub_instance().broadcast({"type": "setup_chat_mode_changed", "auto": auto})
         return {"auto": auto}
 
     @app.post("/api/setup-chat/reset")
