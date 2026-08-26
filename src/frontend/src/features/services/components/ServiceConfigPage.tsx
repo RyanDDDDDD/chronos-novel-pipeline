@@ -6,6 +6,7 @@ import PageHeader from '@/shared/components/PageHeader'
 import ModelRadioList from '@/shared/components/ModelRadioList'
 import NovitaModelPicker from '@/features/services/components/NovitaModelPicker'
 import CloudLoginDialog from '@/features/services/components/CloudLoginDialog'
+import { loginStatusHydrated } from '@/features/services/store/cloudAuthSlice'
 import { Switch } from '@/shared/components/ui/switch'
 import { Input } from '@/shared/components/ui/input'
 import { Textarea } from '@/shared/components/ui/textarea'
@@ -270,6 +271,13 @@ export default function ServiceConfigPage() {
   useEffect(() => {
     void fetchModelCatalog().then(setCatalog)
   }, [])
+
+  useEffect(() => {
+    void fetch('/api/auth/status')
+      .then(res => res.json())
+      .then((body: { logged_in: boolean }) => dispatch(loginStatusHydrated(body.logged_in)))
+      .catch(() => {})
+  }, [dispatch])
 
   const refreshLocalModels = () => {
     setLocalModelsLoading(true)

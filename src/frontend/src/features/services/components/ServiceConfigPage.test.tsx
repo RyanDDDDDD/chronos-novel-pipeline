@@ -430,6 +430,27 @@ describe('联网检索 provider 切换', () => {
     expect(screen.queryByText('千帆 API Key')).toBeNull()
   })
 
+  it('挂载时从 /api/auth/status 同步登录态（跨刷新持久化，不依赖 WS 事件）', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/config') {
+        return { ok: true, json: async () => ({ config: { llm: { cloud_model_id: 'claude-opus-4-7', custom_models: [], local_base_url: 'http://localhost:1234/v1' } } }) }
+      }
+      if (url === '/api/llm/catalog') {
+        return { ok: true, json: async () => ({ cloud_models: [{ id: 'claude-opus-4-7', label: 'Claude Opus 4.7', provider: 'anthropic' }] }) }
+      }
+      if (url === '/api/auth/status') {
+        return { ok: true, json: async () => ({ logged_in: true }) }
+      }
+      return { ok: true, json: async () => ({ models: [] }) }
+    }))
+    renderPage()
+    await waitFor(() => expect(screen.getAllByText('Claude Opus 4.7').length).toBeGreaterThan(0))
+
+    fireEvent.click(screen.getByText('Chronos 云端检索'))
+
+    await waitFor(() => expect(screen.getByText('已登录')).toBeTruthy())
+  })
+
   it('渲染 search_top_k 字段', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/config') {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import cloudAuthReducer from '@/features/services/store/cloudAuthSlice'
+import cloudAuthReducer, { loginStatusHydrated } from '@/features/services/store/cloudAuthSlice'
 import { wsEventReceived } from '@/shared/store/wsActions'
 
 describe('cloudAuthSlice reducer', () => {
@@ -27,5 +27,13 @@ describe('cloudAuthSlice reducer', () => {
       wsEventReceived({ type: 'cloud_auth_logged_out' }),
     )
     expect(state.isLoggedIn).toBe(false)
+  })
+
+  it('loginStatusHydrated syncs isLoggedIn from GET /api/auth/status on mount', () => {
+    // Regression: the WS events above only cover state changes made while the tab is
+    // open -- without this, a fresh page load always starts logged-out even though the
+    // backend's keyring-stored tokens are still valid from a previous session.
+    const state = cloudAuthReducer({ isLoggedIn: false, lastErrorCode: null }, loginStatusHydrated(true))
+    expect(state.isLoggedIn).toBe(true)
   })
 })
