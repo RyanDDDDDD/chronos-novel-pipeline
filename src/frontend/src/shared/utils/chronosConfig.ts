@@ -40,8 +40,10 @@ export type ChronosConfig = {
     model_api_keys?: Record<string, string>
     tavily_api_key?: string
     qianfan_api_key?: string
-    search_provider?: 'tavily' | 'baidu_qianfan'
+    search_provider?: 'tavily' | 'baidu_qianfan' | 'chronos_cloud'
     search_top_k?: number
+    cloud_auth_base_url?: string
+    cloud_search_base_url?: string
   }
   novel_import?: NovelImportConfig
   novels?: NovelsConfig

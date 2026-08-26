@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { Eye, EyeOff } from 'lucide-react'
 import { fetchModelCatalog, fetchLocalModels, fetchCompatibleModels, type CloudModelEntry } from '@/features/services/utils/llmCatalog'
 import PageHeader from '@/shared/components/PageHeader'
 import ModelRadioList from '@/shared/components/ModelRadioList'
 import NovitaModelPicker from '@/features/services/components/NovitaModelPicker'
+import CloudLoginDialog from '@/features/services/components/CloudLoginDialog'
 import { Switch } from '@/shared/components/ui/switch'
 import { Input } from '@/shared/components/ui/input'
 import { Textarea } from '@/shared/components/ui/textarea'
 import { Button } from '@/shared/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/components/ui/tooltip'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select'
-import type { AppDispatch } from '@/shared/store/store'
+import type { AppDispatch, RootState } from '@/shared/store/store'
 import { fetchServiceStatus } from '@/shared/api/servicePing'
 import {
   clampInt,
@@ -237,6 +238,7 @@ function CustomModelForm({
 
 export default function ServiceConfigPage() {
   const dispatch = useDispatch<AppDispatch>()
+  const isLoggedIn = useSelector((state: RootState) => state.cloudAuth.isLoggedIn)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -244,6 +246,7 @@ export default function ServiceConfigPage() {
   const [savedCfgText, setSavedCfgText] = useState('')
   const [showTavilyKey, setShowTavilyKey] = useState(false)
   const [showQianfanKey, setShowQianfanKey] = useState(false)
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [revealedModelKeys, setRevealedModelKeys] = useState<Set<string>>(new Set())
   const toggleRevealed = (id: string) =>
     setRevealedModelKeys(prev => {
@@ -403,10 +406,30 @@ export default function ServiceConfigPage() {
                 />
                 百度千帆
               </label>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="radio"
+                  name="search_provider"
+                  checked={api.search_provider === 'chronos_cloud'}
+                  onChange={() => patch((c) => ({ ...c, api: { ...(c.api ?? {}), search_provider: 'chronos_cloud' } }))}
+                />
+                Chronos 云端检索
+              </label>
             </div>
           </Field>
 
-          {(api.search_provider ?? 'tavily') === 'tavily' ? (
+          {api.search_provider === 'chronos_cloud' ? (
+            <Field label="登录状态" hint="Chronos 云端检索需要登录账号，用量按登录用户计费/限流。">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[var(--c-text-secondary)]">
+                  {isLoggedIn ? '已登录' : '未登录'}
+                </span>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setLoginDialogOpen(true)}>
+                  {isLoggedIn ? '重新登录' : '登录'}
+                </Button>
+              </div>
+            </Field>
+          ) : (api.search_provider ?? 'tavily') === 'tavily' ? (
             <Field
               label="Tavily API Key"
               hint="设定共创 web_search 联网检索用；写入 api.tavily_api_key，保存后重载生效。"
@@ -457,6 +480,7 @@ export default function ServiceConfigPage() {
               </div>
             </Field>
           )}
+          <CloudLoginDialog open={loginDialogOpen} onClose={() => setLoginDialogOpen(false)} />
 
           <Field label="检索条数上限" hint="单次联网检索返回条数上限（两路检索共用）。对应 api.search_top_k。">
             <Input

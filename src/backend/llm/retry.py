@@ -31,6 +31,7 @@ from typing import Any, cast
 
 from langchain_core.runnables.base import RunnableBindingBase
 from langchain_core.runnables.config import RunnableConfig
+from utils.hedge import _cancel_and_discard, hedged_call
 
 DEFAULT_RETRIES = 2
 DEFAULT_BACKOFF_S: tuple[float, ...] = (2.0, 5.0)
@@ -66,33 +67,6 @@ def _rate_limit_excs() -> tuple[type[BaseException], ...]:
 
 RETRYABLE_TRANSPORT_ERRORS = _retryable_excs()
 RATE_LIMIT_ERRORS = _rate_limit_excs()
-
-
-async def _cancel_and_discard(task: asyncio.Task) -> None:
-    """Cancel a losing race participant and await it so its CancelledError (or whatever it
-    happened to raise) is retrieved -- otherwise asyncio logs "exception was never retrieved"
-    once the task is garbage collected."""
-    task.cancel()
-    with contextlib.suppress(BaseException):  # noqa: BLE001 - deliberately discarding the loser
-        await task
-
-
-async def _race_first_success(tasks: set[asyncio.Task]) -> Any:
-    """First task to complete WITHOUT raising wins; every other task is cancelled and
-    discarded. If every task raises, re-raises the last exception seen."""
-    pending = set(tasks)
-    last_exc: BaseException | None = None
-    while pending:
-        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-        for t in done:
-            exc = t.exception()
-            if exc is None:
-                for p in pending:
-                    await _cancel_and_discard(p)
-                return t.result()
-            last_exc = exc
-    assert last_exc is not None
-    raise last_exc
 
 
 async def _first_chunk(
@@ -177,14 +151,11 @@ class RetryingChatModel(RunnableBindingBase):
                 transport_attempt += 1
 
     async def ainvoke(self, input: Any, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
-        if not self.hedge_enabled:
-            return await self._ainvoke_attempt(input, config, **kwargs)
-        primary = asyncio.ensure_future(self._ainvoke_attempt(input, config, **kwargs))
-        done, _ = await asyncio.wait({primary}, timeout=HEDGE_DELAY_S)
-        if primary in done:
-            return primary.result()
-        hedge = asyncio.ensure_future(self._ainvoke_attempt(input, config, **kwargs))
-        return await _race_first_success({primary, hedge})
+        return await hedged_call(
+            lambda: self._ainvoke_attempt(input, config, **kwargs),
+            hedge_enabled=self.hedge_enabled,
+            delay=HEDGE_DELAY_S,
+        )
 
     async def _astream_attempt(
         self, input: Any, config: RunnableConfig | None, **kwargs: Any,

@@ -11,6 +11,7 @@ import novelStatusReducer from '@/shared/store/novelStatusSlice'
 import backgroundJobsReducer from '@/shared/store/backgroundJobsSlice'
 import portraitGenerationReducer from '@/shared/store/portraitGenerationSlice'
 import viewUnreadReducer from '@/shared/store/viewUnreadSlice'
+import cloudAuthReducer from '@/features/services/store/cloudAuthSlice'
 import { wsMiddleware } from '@/shared/store/wsMiddleware'
 import { listenerMiddleware } from '@/shared/store/listeners'
 
@@ -28,6 +29,7 @@ export const store = configureStore({
     backgroundJobs: backgroundJobsReducer,
     portraitGeneration: portraitGenerationReducer,
     viewUnread: viewUnreadReducer,
+    cloudAuth: cloudAuthReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().prepend(listenerMiddleware.middleware).concat(wsMiddleware),

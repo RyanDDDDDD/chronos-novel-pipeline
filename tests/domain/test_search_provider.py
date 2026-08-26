@@ -15,6 +15,11 @@ from domain.search_provider import (
 def test_search_provider_kind_values():
     assert SearchProviderKind.TAVILY == "tavily"
     assert SearchProviderKind.BAIDU_QIANFAN == "baidu_qianfan"
+    assert SearchProviderKind.CHRONOS_CLOUD == "chronos_cloud"
+
+
+def test_search_provider_kind_includes_chronos_cloud():
+    assert SearchProviderKind.CHRONOS_CLOUD == "chronos_cloud"
 
 
 def test_search_hit_defaults_to_no_images():
@@ -267,3 +272,48 @@ def test_build_search_provider_defaults_top_k_to_five_when_missing():
     cfg = {"api": {"tavily_api_key": "tk"}}
     provider = build_search_provider(cfg)
     assert provider._top_k == 5
+
+
+@pytest.mark.asyncio
+async def test_chronos_cloud_search_provider_raises_when_not_logged_in(monkeypatch):
+    from domain.search_provider import ChronosCloudSearchProvider
+
+    monkeypatch.setattr("api.services.cloud_auth.is_logged_in", lambda: False)
+    provider = ChronosCloudSearchProvider(base_url="https://search.example.com")
+
+    with pytest.raises(ValueError, match="请先登录"):
+        await provider.search("some topic")
+
+
+@pytest.mark.asyncio
+async def test_chronos_cloud_search_provider_maps_response_to_search_result(monkeypatch):
+    from domain.search_provider import ChronosCloudSearchProvider
+
+    monkeypatch.setattr("api.services.cloud_auth.is_logged_in", lambda: True)
+    monkeypatch.setattr("api.services.cloud_auth.get_access_token", lambda: "the-access-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Authorization"] == "Bearer the-access-token"
+        return httpx.Response(200, json={
+            "answer": "cloud answer",
+            "hits": [{"text": "hit text", "url": "http://x", "images": [{"url": "http://img", "description": None}]}],
+            "top_images": [],
+        })
+
+    transport = httpx.MockTransport(handler)
+    provider = ChronosCloudSearchProvider(base_url="https://search.example.com", transport=transport)
+
+    result = await provider.search("some topic")
+
+    assert result.answer == "cloud answer"
+    assert result.hits[0].text == "hit text"
+    assert result.hits[0].images == [("http://img", None)]
+
+
+def test_build_search_provider_raises_for_chronos_cloud_when_base_url_missing():
+    from domain.search_provider import build_search_provider
+
+    cfg = {"api": {"search_provider": "chronos_cloud"}}
+
+    with pytest.raises(ValueError, match="cloud_search_base_url"):
+        build_search_provider(cfg)
