@@ -291,10 +291,10 @@ async def test_ping_search_free_tavily_usage_endpoint_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ping_search_free_baidu_qianfan_returns_none(monkeypatch):
+async def test_ping_search_free_baidu_qianfan_with_key_returns_none(monkeypatch):
     """No free introspection endpoint exists for Baidu Qianfan's AI Search
     product -- ping_search_free must not spend real quota automatically, so
-    it returns None (caller renders this as "disabled")."""
+    a configured key still returns None (caller renders this as "disabled")."""
     from api.services.service_ping import ping_search_free
 
     def _boom(*a, **k):
@@ -303,3 +303,66 @@ async def test_ping_search_free_baidu_qianfan_returns_none(monkeypatch):
     monkeypatch.setattr("httpx.AsyncClient", _boom)
     result = await ping_search_free({"api": {"search_provider": "baidu_qianfan", "qianfan_api_key": "k"}})
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_ping_search_free_baidu_qianfan_missing_key_returns_error(monkeypatch):
+    """An empty key is a definite failure we can report for free, without
+    needing a network call at all."""
+    from api.services.service_ping import ping_search_free
+
+    def _boom(*a, **k):
+        raise AssertionError("must not make any network call for a missing key")
+
+    monkeypatch.setattr("httpx.AsyncClient", _boom)
+    result = await ping_search_free({"api": {"search_provider": "baidu_qianfan"}})
+    assert result == {"ok": False, "error": "未配置百度千帆 key"}
+
+
+@pytest.mark.asyncio
+async def test_ping_search_free_chronos_cloud_not_logged_in(monkeypatch):
+    """A logged-out state is reported directly with zero network cost."""
+    from api.services.service_ping import ping_search_free
+
+    def _boom(*a, **k):
+        raise AssertionError("must not make any network call when logged out")
+
+    monkeypatch.setattr("api.services.cloud_auth.is_logged_in", lambda: False)
+    monkeypatch.setattr("api.services.cloud_auth.refresh", _boom)
+    result = await ping_search_free({"api": {"search_provider": "chronos_cloud"}})
+    assert result == {"ok": False, "error": "尚未登录 Chronos 云端账号"}
+
+
+@pytest.mark.asyncio
+async def test_ping_search_free_chronos_cloud_refresh_succeeds(monkeypatch):
+    """When logged in, POST /v1/auth/refresh is the free (no search-quota-cost)
+    real network round-trip that verifies reachability."""
+    from api.services.service_ping import ping_search_free
+
+    called_with = []
+
+    async def _fake_refresh(cfg):
+        called_with.append(cfg)
+
+    monkeypatch.setattr("api.services.cloud_auth.is_logged_in", lambda: True)
+    monkeypatch.setattr("api.services.cloud_auth.refresh", _fake_refresh)
+    cfg = {"api": {"search_provider": "chronos_cloud"}}
+    result = await ping_search_free(cfg)
+    assert result == {"ok": True, "error": None}
+    assert called_with == [cfg]
+
+
+@pytest.mark.asyncio
+async def test_ping_search_free_chronos_cloud_refresh_fails(monkeypatch):
+    """A failed refresh (e.g. expired refresh token) surfaces the cloud
+    AuthService's error_code instead of raising out of the ping."""
+    from api.services.cloud_auth import CloudAuthError
+    from api.services.service_ping import ping_search_free
+
+    async def _fake_refresh(cfg):
+        raise CloudAuthError("REFRESH_TOKEN_INVALID", "本地没有 refresh token，需要重新登录。")
+
+    monkeypatch.setattr("api.services.cloud_auth.is_logged_in", lambda: True)
+    monkeypatch.setattr("api.services.cloud_auth.refresh", _fake_refresh)
+    result = await ping_search_free({"api": {"search_provider": "chronos_cloud"}})
+    assert result == {"ok": False, "error": "REFRESH_TOKEN_INVALID"}
