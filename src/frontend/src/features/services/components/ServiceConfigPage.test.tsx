@@ -418,6 +418,18 @@ describe('联网检索 provider 切换', () => {
     expect(screen.queryByText('Tavily API Key')).toBeNull()
   })
 
+  it('切到 Chronos 云端检索后显示登录状态', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Tavily API Key')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Chronos 云端检索'))
+
+    await waitFor(() => expect(screen.getByText('登录状态')).toBeTruthy())
+    expect(screen.getByText('未登录')).toBeTruthy()
+    expect(screen.queryByText('Tavily API Key')).toBeNull()
+    expect(screen.queryByText('千帆 API Key')).toBeNull()
+  })
+
   it('渲染 search_top_k 字段', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/config') {

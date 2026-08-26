@@ -60,6 +60,7 @@ export interface OrchestratorEvent {
   options?: string[]
   depth?: number
   auto?: boolean
+  error_code?: string
 }
 
 /** 唯一的入站 WS 事件 action：wsMiddleware 收到消息后统一 dispatch 这一个 action，

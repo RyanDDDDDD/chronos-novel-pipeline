@@ -1632,6 +1632,85 @@ Receive a user message and run a setting dialog; the output is broadcast via ws.
         return {"ok": True}
 
 
+    @app.post("/api/auth/register")
+    async def cloud_auth_register(body: dict):
+        from utils.config import get_config
+
+        from api.services import cloud_auth
+
+        try:
+            return await cloud_auth.register(get_config(), body.get("email", ""), body.get("password", ""))
+        except cloud_auth.CloudAuthError as e:
+            return Response(
+                content=json.dumps({"ok": False, "error_code": e.error_code}, ensure_ascii=False),
+                status_code=400, media_type="application/json",
+            )
+
+    @app.post("/api/auth/confirm")
+    async def cloud_auth_confirm(body: dict):
+        from utils.config import get_config
+
+        from api.services import cloud_auth
+
+        try:
+            await cloud_auth.confirm(get_config(), body.get("email", ""), body.get("confirmation_code", ""))
+            return {"ok": True}
+        except cloud_auth.CloudAuthError as e:
+            return Response(
+                content=json.dumps({"ok": False, "error_code": e.error_code}, ensure_ascii=False),
+                status_code=400, media_type="application/json",
+            )
+
+    @app.post("/api/auth/login")
+    async def cloud_auth_login(body: dict):
+        from utils.config import get_config
+
+        from api.services import cloud_auth
+
+        try:
+            await cloud_auth.login(get_config(), body.get("email", ""), body.get("password", ""))
+        except cloud_auth.CloudAuthError as e:
+            return Response(
+                content=json.dumps({"ok": False, "error_code": e.error_code}, ensure_ascii=False),
+                status_code=400, media_type="application/json",
+            )
+        await _hub_instance().broadcast({"type": "cloud_auth_login_succeeded"})
+        return {"ok": True}
+
+    @app.post("/api/auth/oauth/start")
+    async def cloud_auth_oauth_start(body: dict):
+        from utils.config import get_config
+
+        from api.services import cloud_auth
+
+        async def _run_and_broadcast() -> None:
+            try:
+                await cloud_auth.start_google_login(get_config())
+            except cloud_auth.CloudAuthError as e:
+                await _hub_instance().broadcast({"type": "cloud_auth_login_failed", "error_code": e.error_code})
+                return
+            await _hub_instance().broadcast({"type": "cloud_auth_login_succeeded"})
+
+        asyncio.create_task(_run_and_broadcast())
+        return {"status": "waiting_for_browser"}
+
+    @app.post("/api/auth/logout")
+    async def cloud_auth_logout(body: dict):
+        from utils.config import get_config
+
+        from api.services import cloud_auth
+
+        await cloud_auth.logout(get_config())
+        await _hub_instance().broadcast({"type": "cloud_auth_logged_out"})
+        return {"ok": True}
+
+    @app.get("/api/auth/status")
+    async def cloud_auth_status():
+        from api.services import cloud_auth
+
+        return {"logged_in": cloud_auth.is_logged_in()}
+
+
 def register_ws(app: FastAPI) -> None:
     """客户端 WebSocket 端点（combined 用；engine 角色不注册——浏览器只连 Gateway）。
 

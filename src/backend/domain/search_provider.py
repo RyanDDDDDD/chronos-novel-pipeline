@@ -14,6 +14,7 @@ from tavily import AsyncTavilyClient
 class SearchProviderKind(StrEnum):
     TAVILY = "tavily"
     BAIDU_QIANFAN = "baidu_qianfan"
+    CHRONOS_CLOUD = "chronos_cloud"
 
 
 @dataclass
@@ -146,6 +147,61 @@ class BaiduQianfanSearchProvider(SearchProvider):
         return SearchResult(answer=None, hits=hits)
 
 
+_CHRONOS_CLOUD_HEDGE_DELAY_S = 5.0
+
+
+class ChronosCloudSearchProvider(SearchProvider):
+    """POST /v1/search/query on chronos-cloud-services' SearchService. Delay-hedged (see
+    utils/hedge.py) -- CONTRACT.md documents this endpoint as safe to receive the same query
+    twice concurrently; both hedge attempts intentionally count against the user's rate-limit
+    quota, this class does not try to deduplicate them."""
+
+    def __init__(self, base_url: str, top_k: int = 5, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._top_k = max(1, min(top_k, 20))
+        self._transport = transport
+
+    async def search(self, topic: str) -> SearchResult:
+        from api.services import cloud_auth
+        from utils.hedge import hedged_call
+
+        if not cloud_auth.is_logged_in():
+            raise ValueError("请先登录 Chronos 账号后再使用云端检索。")
+
+        async def _attempt() -> SearchResult:
+            token = cloud_auth.get_access_token()
+            async with httpx.AsyncClient(transport=self._transport, timeout=20) as client:
+                resp = await client.post(
+                    f"{self._base_url}/v1/search/query",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"query": topic, "top_k": self._top_k},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+            hits = [
+                SearchHit(
+                    text=row.get("text", ""),
+                    url=row.get("url", ""),
+                    images=[
+                        (img["url"], img.get("description"))
+                        for img in (row.get("images") or [])
+                        if isinstance(img, dict) and img.get("url")
+                    ],
+                )
+                for row in (data.get("hits") or [])
+                if isinstance(row, dict)
+            ]
+            top_images = [
+                (img["url"], img.get("description"))
+                for img in (data.get("top_images") or [])
+                if isinstance(img, dict) and img.get("url")
+            ]
+            return SearchResult(answer=data.get("answer"), hits=hits, top_images=top_images)
+
+        return await hedged_call(_attempt, hedge_enabled=True, delay=_CHRONOS_CLOUD_HEDGE_DELAY_S)
+
+
 def search_provider_kind(cfg: dict) -> SearchProviderKind:
     api_cfg = cfg.get("api") or {}
     return SearchProviderKind(api_cfg.get("search_provider") or SearchProviderKind.TAVILY)
@@ -153,7 +209,7 @@ def search_provider_kind(cfg: dict) -> SearchProviderKind:
 
 def build_search_provider(cfg: dict) -> SearchProvider:
     """Construct the configured search provider. Raises ValueError with a
-    user-facing Chinese message when the selected provider's key is missing."""
+    user-facing Chinese message when the selected provider's key/login is missing."""
     api_cfg = cfg.get("api") or {}
     top_k = api_cfg.get("search_top_k", 5)
     kind = search_provider_kind(cfg)
@@ -163,6 +219,12 @@ def build_search_provider(cfg: dict) -> SearchProvider:
         if not key:
             raise ValueError("未配置 Tavily key，无法联网检索。请在服务配置页填入 tavily_api_key。")
         return TavilySearchProvider(api_key=key, top_k=top_k)
+
+    if kind == SearchProviderKind.CHRONOS_CLOUD:
+        base_url = api_cfg.get("cloud_search_base_url", "")
+        if not base_url:
+            raise ValueError("未配置云端检索服务地址，无法联网检索。请在服务配置页填入 cloud_search_base_url。")
+        return ChronosCloudSearchProvider(base_url=base_url, top_k=top_k)
 
     key = api_cfg.get("qianfan_api_key", "")
     if not key:

@@ -30,6 +30,7 @@ dependencies = [
     "python-multipart>=0.0.28",
     "pyahocorasick>=2.1.0",
     "pillow>=10.0",
+    "keyring>=25.0",
 ]
 
 [project.optional-dependencies]

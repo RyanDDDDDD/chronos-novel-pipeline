@@ -28,6 +28,8 @@ _DEFAULTS: dict = {
         "qianfan_api_key": "",
         "search_provider": "tavily",
         "search_top_k": 5,
+        "cloud_auth_base_url": "",
+        "cloud_search_base_url": "",
     },
     "server": {
         "engine_port": 8776,

@@ -15,6 +15,7 @@ import novelStatusReducer from '@/shared/store/novelStatusSlice'
 import backgroundJobsReducer from '@/shared/store/backgroundJobsSlice'
 import portraitGenerationReducer from '@/shared/store/portraitGenerationSlice'
 import viewUnreadReducer from '@/shared/store/viewUnreadSlice'
+import cloudAuthReducer from '@/features/services/store/cloudAuthSlice'
 import { listenerMiddleware } from '@/shared/store/listeners'
 import { authorLoopDialogueKey } from '@/shared/queries/keys'
 import { TestProviders } from '@/test/testProviders'
@@ -85,6 +86,7 @@ export function buildTestStore(preloadedState?: Partial<RootState>) {
       backgroundJobs: backgroundJobsReducer,
       portraitGeneration: portraitGenerationReducer,
       viewUnread: viewUnreadReducer,
+      cloudAuth: cloudAuthReducer,
     },
     middleware: (getDefaultMiddleware) => getDefaultMiddleware().prepend(listenerMiddleware.middleware),
     preloadedState: preloadedState as RootState | undefined,
