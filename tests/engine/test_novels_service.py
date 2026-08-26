@@ -45,7 +45,41 @@ def _seed(novels_root, nid="default", name="默认", *, active: bool = True):
 
 def test_list_and_active(novels_root):
     _seed(novels_root)
-    assert nv.list_novels() == [{"id": "default", "name": "默认", "active": True}]
+    assert nv.list_novels() == [{"id": "default", "name": "默认", "active": True, "pinned": False}]
+
+
+def test_pin_novel_sorts_to_top_and_sets_pinned_flag(novels_root):
+    _seed(novels_root, nid="a", name="A小说", active=False)
+    _seed(novels_root, nid="b", name="B小说", active=True)
+    nv.set_novel_pinned("a", True)
+    novels = nv.list_novels()
+    assert [n["id"] for n in novels] == ["a", "b"]
+    assert novels[0]["pinned"] is True
+    assert novels[1]["pinned"] is False
+
+
+def test_unpin_novel_returns_to_name_order(novels_root):
+    _seed(novels_root, nid="a", name="A小说", active=False)
+    _seed(novels_root, nid="b", name="B小说", active=True)
+    nv.set_novel_pinned("a", True)
+    nv.set_novel_pinned("a", False)
+    assert [n["id"] for n in nv.list_novels()] == ["a", "b"]
+    assert all(not n["pinned"] for n in nv.list_novels())
+
+
+def test_multiple_pinned_novels_most_recently_pinned_first(novels_root):
+    _seed(novels_root, nid="a", name="A小说", active=False)
+    _seed(novels_root, nid="b", name="B小说", active=False)
+    _seed(novels_root, nid="c", name="C小说", active=True)
+    nv.set_novel_pinned("a", True)
+    nv.set_novel_pinned("b", True)
+    assert [n["id"] for n in nv.list_novels()] == ["b", "a", "c"]
+
+
+def test_pin_unknown_novel_raises(novels_root):
+    _seed(novels_root)
+    with pytest.raises(ValueError):
+        nv.set_novel_pinned("nope", True)
 
 
 def test_create_blank_builds_empty_dirs(novels_root):
@@ -152,7 +186,7 @@ def test_delete_active_heals_to_remaining(novels_root):
     assert (novels_root / ".trash" / "default").is_dir()
     from utils.paths import active_novel_id
     assert active_novel_id() == nid
-    assert nv.list_novels() == [{"id": nid, "name": "第二部", "active": True}]
+    assert nv.list_novels() == [{"id": nid, "name": "第二部", "active": True, "pinned": False}]
 
 
 def test_delete_moves_to_trash_with_timestamp_on_collision(novels_root):

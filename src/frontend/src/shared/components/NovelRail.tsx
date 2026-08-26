@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Plus, MoreHorizontal, PanelLeftClose, PanelLeft, Pencil, Trash2, Copy, Search } from 'lucide-react'
+import { Plus, MoreHorizontal, PanelLeftClose, PanelLeft, Pencil, Trash2, Copy, Search, Pin, PinOff } from 'lucide-react'
 import NovelRailSettings from '@/shared/components/NovelRailSettings'
 import { Button } from '@/shared/components/ui/button'
 import {
@@ -64,7 +64,7 @@ export default function NovelRail() {
   const { data: novels = [] } = useNovels()
   const activeId = useActiveNovelId()
   useNovelStatusSnapshot()
-  const { createNovel, copyNovel, renameNovel, deleteNovel } = useNovelActions()
+  const { createNovel, copyNovel, renameNovel, deleteNovel, togglePinNovel } = useNovelActions()
   // Switching novels always lands on its dialogue (chat) page, regardless of the view being left.
   const onSwitch = (id: string) => { if (id !== novelId) navigate(`/novel/${id}/chat`) }
 
@@ -193,7 +193,10 @@ export default function NovelRail() {
                         : 'text-[color:var(--c-text-secondary)] hover:bg-[var(--c-surface-hover)]'
                     }`}
                   >
-                    <span className="block truncate">{n.name}</span>
+                    <span className="flex items-center gap-1 truncate">
+                      {n.pinned && <Pin size={11} className="shrink-0 text-[color:var(--c-text-muted)]" aria-label="已置顶" />}
+                      <span className="truncate">{n.name}</span>
+                    </span>
                     <NovelStatusDot novelId={n.id} />
                   </button>
                 </TooltipTrigger>
@@ -214,6 +217,10 @@ export default function NovelRail() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-32">
+                  <DropdownMenuItem onClick={() => void togglePinNovel(n.id)}>
+                    {n.pinned ? <PinOff size={13} /> : <Pin size={13} />}
+                    {n.pinned ? '取消置顶' : '置顶'}
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => void copyNovel(n.id)}>
                     <Copy size={13} />复制
                   </DropdownMenuItem>

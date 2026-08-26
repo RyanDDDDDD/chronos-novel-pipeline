@@ -1461,18 +1461,23 @@ Receive a user message and run a setting dialog; the output is broadcast via ws.
         }
 
     @app.patch("/api/novels/{nid}")
-    async def rename_novel_endpoint(nid: str, body: dict):
+    async def update_novel_endpoint(nid: str, body: dict):
         from fastapi import Response
 
-        from api.services.novels import rename_novel
-        name = str((body or {}).get("name", "")).strip()
-        if not name:
-            return Response(
-                content=json.dumps({"ok": False, "error": "name 不能为空"}, ensure_ascii=False),
-                status_code=400, media_type="application/json",
-            )
+        from api.services.novels import rename_novel, set_novel_pinned
+
+        body = body or {}
         try:
-            rename_novel(nid, name)
+            if "name" in body:
+                name = str(body.get("name", "")).strip()
+                if not name:
+                    return Response(
+                        content=json.dumps({"ok": False, "error": "name 不能为空"}, ensure_ascii=False),
+                        status_code=400, media_type="application/json",
+                    )
+                rename_novel(nid, name)
+            if "pinned" in body:
+                set_novel_pinned(nid, bool(body.get("pinned")))
         except ValueError as e:
             return Response(
                 content=json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False),

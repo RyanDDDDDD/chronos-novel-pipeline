@@ -26,13 +26,14 @@ vi.mock('@/shared/utils/novels', async (importOriginal) => {
     copyNovel: vi.fn(),
     renameNovel: vi.fn(),
     deleteNovel: vi.fn(),
+    setNovelPinned: vi.fn(),
     listProseStyles: vi.fn(),
     getProseStyle: vi.fn(),
     setProseStyle: vi.fn(),
     getProseStylePresetContent: vi.fn(),
   }
 })
-import { fetchNovels, createNovel, copyNovel, renameNovel, deleteNovel, listProseStyles, getProseStyle } from '@/shared/utils/novels'
+import { fetchNovels, createNovel, copyNovel, renameNovel, deleteNovel, setNovelPinned, listProseStyles, getProseStyle } from '@/shared/utils/novels'
 
 //This jsdom environment is unavailable localStorage → install a memory stub (the component has been fault-tolerant for missing, here is to verify persistence)
 const origLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
@@ -48,8 +49,8 @@ beforeEach(() => {
   }
   Object.defineProperty(globalThis, 'localStorage', { value: mem, configurable: true, writable: true })
   vi.mocked(fetchNovels).mockResolvedValue([
-    { id: 'a', name: '甲小说', active: true },
-    { id: 'b', name: '乙小说', active: false },
+    { id: 'a', name: '甲小说', active: true, pinned: false },
+    { id: 'b', name: '乙小说', active: false, pinned: false },
   ])
   vi.mocked(listProseStyles).mockResolvedValue([{ id: 'plain-direct', title: '语感调色：大白话直白体' }])
   vi.mocked(getProseStyle).mockResolvedValue({ preset: 'plain-direct', custom_addendum: '' })
@@ -127,6 +128,30 @@ describe('NovelRail', () => {
     await waitFor(() => expect(copyNovel).toHaveBeenCalledWith('a', '甲小说 副本'))
   })
 
+  it('⋯ 菜单-置顶：调用 setNovelPinned 并刷新列表', async () => {
+    const user = userEvent.setup()
+    renderRail()
+    await waitFor(() => expect(screen.getByText('甲小说')).toBeTruthy())
+    vi.mocked(setNovelPinned).mockResolvedValue({ ok: true })
+    await user.click(screen.getAllByTitle('更多')[0])
+    await user.click(await screen.findByRole('menuitem', { name: '置顶' }))
+    await waitFor(() => expect(setNovelPinned).toHaveBeenCalledWith('a', true))
+  })
+
+  it('已置顶小说：名称旁显示图钉，菜单项变为"取消置顶"并传 false', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchNovels).mockResolvedValue([
+      { id: 'a', name: '甲小说', active: true, pinned: true },
+      { id: 'b', name: '乙小说', active: false, pinned: false },
+    ])
+    renderRail()
+    await waitFor(() => expect(screen.getByLabelText('已置顶')).toBeTruthy())
+    vi.mocked(setNovelPinned).mockResolvedValue({ ok: true })
+    await user.click(screen.getAllByTitle('更多')[0])
+    await user.click(await screen.findByRole('menuitem', { name: '取消置顶' }))
+    await waitFor(() => expect(setNovelPinned).toHaveBeenCalledWith('a', false))
+  })
+
   it('⋯ 菜单-重命名（当前激活小说）', async () => {
     const user = userEvent.setup()
     renderRail()
@@ -167,7 +192,7 @@ describe('NovelRail', () => {
 
   it('单部小说时删除禁用', async () => {
     const user = userEvent.setup()
-    vi.mocked(fetchNovels).mockResolvedValue([{ id: 'a', name: '甲小说', active: true }])
+    vi.mocked(fetchNovels).mockResolvedValue([{ id: 'a', name: '甲小说', active: true, pinned: false }])
     renderRail()
     await waitFor(() => expect(screen.getByText('甲小说')).toBeTruthy())
     await user.click(screen.getByTitle('更多'))

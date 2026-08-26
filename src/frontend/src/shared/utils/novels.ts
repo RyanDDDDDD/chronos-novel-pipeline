@@ -2,6 +2,7 @@ export interface Novel {
   id: string
   name: string
   active: boolean
+  pinned: boolean
 }
 
 export function filterNovelsByName(novels: Novel[], query: string): Novel[] {
@@ -75,6 +76,15 @@ export async function renameNovel(id: string, name: string): Promise<{ ok: boole
 
 export async function deleteNovel(id: string): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch(`/api/novels/${id}`, { method: 'DELETE' })
+  return res.json().catch(() => ({ ok: false, error: '请求失败' }))
+}
+
+export async function setNovelPinned(id: string, pinned: boolean): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/novels/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pinned }),
+  })
   return res.json().catch(() => ({ ok: false, error: '请求失败' }))
 }
 
