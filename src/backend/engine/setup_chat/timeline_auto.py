@@ -15,6 +15,14 @@ import contextlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
+from api.services.setup_chat_review_feedback import (
+    REVIEW_FEEDBACK,
+    ReviewFeedbackEntry,
+    ReviewKey,
+    ReviewStatus,
+    handle_review_timeout,
+)
+
 
 def _plot_chapters() -> list[int]:
     from repositories import get_plot_repo
@@ -197,19 +205,6 @@ async def run_timeline_cascade(
     ))
 
 
-def _render_cascade_summary(results: list[tuple[str, bool, str | None]]) -> str:
-    """Structured facts fed to the chat agent, mirroring
-    skeleton_background_review._render_background_summary's philosophy --
-    not user-facing prose, the triggered turn's own LLM call composes the actual reply."""
-    names = sorted({name for name, ok, _error in results if ok})
-    failures = [error for _name, ok, error in results if not ok and error]
-    lines = []
-    if names:
-        lines.append(f"已为角色 {'、'.join(names)} 重新推演档案。")
-    lines.extend(failures)
-    return "\n".join(lines)
-
-
 async def _run_cascade_and_notify(
     min_chapter: int, names: list[str] | None, novel_id: str, *, notify_chat: bool = True,
 ) -> None:
@@ -231,13 +226,23 @@ async def _run_cascade_and_notify(
 
     await _broadcast_cascade_event(novel_id, "timeline_cascade_done")
 
-    if not results or not notify_chat:
+    if not notify_chat:
         return
 
-    summary = _render_cascade_summary(results)
     from api.routes import _hub_instance
 
-    await _hub_instance().trigger_system_notice_turn(novel_id, summary)
+    entries: list[tuple[ReviewKey, ReviewFeedbackEntry]] = []
+    for name, ok, error in results:
+        if ok:
+            body = "已为该角色重新推演时间线档案。"
+        else:
+            body = error or "时间线推演失败。"
+        entries.append((
+            ("timeline", name),
+            ReviewFeedbackEntry("timeline", f"角色「{name}」时间线", ReviewStatus.RESOLVED, body),
+        ))
+
+    await _hub_instance().report_review_done(novel_id, ("timeline",), entries)
 
 
 @dataclass
@@ -294,16 +299,43 @@ async def _settle_cascade(novel_id: str) -> None:
     names = sorted(scope.names) if scope.names is not None else None
     min_chapter = scope.min_chapter if scope.min_chapter is not None else 1
     notify_chat = scope.notify_chat
+    if notify_chat:
+        REVIEW_FEEDBACK.mark_pending(novel_id, ("timeline",))
     SCHEDULER.schedule_once(
         run_name, 0.0,
         lambda: _run_cascade_and_notify(min_chapter, names, novel_id, notify_chat=notify_chat),
         dedup=True,
-        on_timeout=lambda: _on_cascade_timeout(novel_id),
+        on_timeout=lambda: _on_cascade_timeout(novel_id, min_chapter, names, notify_chat),
     )
 
 
-async def _on_cascade_timeout(novel_id: str) -> None:
-    await _broadcast_cascade_event(novel_id, "timeline_cascade_done")
+async def _on_cascade_timeout(
+    novel_id: str,
+    min_chapter: int = 1,
+    names: list[str] | None = None,
+    notify_chat: bool = True,
+) -> None:
+    async def _give_up() -> None:
+        await _broadcast_cascade_event(novel_id, "timeline_cascade_done")
+
+    if not notify_chat:
+        await _give_up()
+        return
+
+    def _retry() -> None:
+        from api.services.scheduler import SCHEDULER
+
+        SCHEDULER.schedule_once(
+            f"timeline-cascade-run:{novel_id}", 0.0,
+            lambda: _run_cascade_and_notify(min_chapter, names, novel_id, notify_chat=notify_chat),
+            dedup=True,
+            on_timeout=lambda: _on_cascade_timeout(novel_id, min_chapter, names, notify_chat),
+        )
+
+    await handle_review_timeout(
+        novel_id, ("timeline",), kind="timeline", label="角色时间线",
+        retry=_retry, give_up=_give_up,
+    )
 
 
 def is_cascade_active(novel_id: str) -> bool:

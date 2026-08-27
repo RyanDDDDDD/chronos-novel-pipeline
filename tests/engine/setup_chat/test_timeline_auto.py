@@ -1,7 +1,54 @@
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
+from api.services.setup_chat_review_feedback import REVIEW_FEEDBACK, render_review_feedback
 from repo_test_helpers import seed_lore, seed_plot
+
+
+class _FakeHub:
+    """Mirrors the real MessageHub.report_review_done / _maybe_flush_review_feedback so
+    module tests can assert the end-to-end batched notice."""
+
+    def __init__(self, *, busy: bool = False):
+        self.broadcasts: list[dict] = []
+        self.notices: list[tuple[str, str]] = []
+        self._busy = busy
+
+    async def broadcast(self, event):
+        self.broadcasts.append(event)
+
+    def is_setup_chat_busy(self, novel_id=None) -> bool:
+        return self._busy
+
+    async def trigger_system_notice_turn(self, novel_id, summary):
+        self.notices.append((novel_id, summary))
+
+    async def report_review_done(self, novel_id, pending_key, entries):
+        for bkey, entry in entries:
+            REVIEW_FEEDBACK.record(novel_id, bkey, entry)
+        REVIEW_FEEDBACK.clear_pending(novel_id, pending_key)
+        REVIEW_FEEDBACK.reset_attempt(novel_id, pending_key)
+        await self._maybe_flush(novel_id)
+
+    async def _maybe_flush(self, novel_id):
+        if REVIEW_FEEDBACK.has_pending(novel_id):
+            return
+        entries = REVIEW_FEEDBACK.snapshot(novel_id)
+        if not entries or self._busy:
+            return
+        REVIEW_FEEDBACK.clear_buffer(novel_id)
+        await self.trigger_system_notice_turn(novel_id, render_review_feedback(entries))
+
+
+@pytest.fixture(autouse=True)
+def _clean_review_feedback():
+    from engine.setup_chat import timeline_auto
+    timeline_auto._CASCADE_PENDING.clear()
+    REVIEW_FEEDBACK.clear_all("n")
+    yield
+    timeline_auto._CASCADE_PENDING.clear()
+    REVIEW_FEEDBACK.clear_all("n")
 
 
 def _seed(tmp_path, monkeypatch, plot, *, scan_names: tuple[str, ...] = ("甲", "乙")):
@@ -440,17 +487,12 @@ async def test_settle_cascade_broadcasts_started_when_nothing_was_running(monkey
     captured = {}
     monkeypatch.setattr(sched.SCHEDULER, "schedule_once", fake_schedule_once)
 
-    broadcasts = []
-
-    class _FakeHub:
-        async def broadcast(self, ev):
-            broadcasts.append(ev)
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
     await timeline_auto._settle_cascade("n")
 
-    assert broadcasts == [{"type": "timeline_cascade_started", "novel_id": "n"}]
+    assert hub.broadcasts == [{"type": "timeline_cascade_started", "novel_id": "n"}]
     assert run_calls[0][0] == "timeline-cascade-run:n"
     assert "n" not in timeline_auto._CASCADE_PENDING  # consumed
     assert captured["on_timeout"] is not None
@@ -477,17 +519,12 @@ async def test_settle_cascade_cancels_and_broadcasts_restarted_when_one_is_runni
     monkeypatch.setattr(sched.SCHEDULER, "cancel_once", fake_cancel_once)
     monkeypatch.setattr(sched.SCHEDULER, "schedule_once", lambda *a, **k: None)
 
-    broadcasts = []
-
-    class _FakeHub:
-        async def broadcast(self, ev):
-            broadcasts.append(ev)
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
     await timeline_auto._settle_cascade("n")
 
-    assert broadcasts == [{"type": "timeline_cascade_restarted", "novel_id": "n"}]
+    assert hub.broadcasts == [{"type": "timeline_cascade_restarted", "novel_id": "n"}]
 
 
 @pytest.mark.asyncio
@@ -507,9 +544,8 @@ async def test_settle_cascade_passes_merged_scope_to_the_new_run(monkeypatch):
         captured["coro"] = coro
 
     monkeypatch.setattr(sched.SCHEDULER, "schedule_once", fake_schedule_once)
-    monkeypatch.setattr("api.routes._hub_instance", lambda: type(
-        "H", (), {"broadcast": staticmethod(lambda ev: _noop())},
-    )())
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
     run_args = []
 
@@ -522,10 +558,6 @@ async def test_settle_cascade_passes_merged_scope_to_the_new_run(monkeypatch):
     await captured["coro"]()
 
     assert run_args == [(2, ["乙", "甲"], "n", True)]
-
-
-async def _noop():
-    pass
 
 
 def test_schedule_timeline_cascade_merges_before_dedup_settle(monkeypatch):
@@ -553,178 +585,136 @@ def test_schedule_timeline_cascade_merges_before_dedup_settle(monkeypatch):
     assert scope.min_chapter == 2
 
 
-# ── _run_cascade_and_notify ───────────────────────────────────────────────────
+# ── _run_cascade_and_notify + buffer tests ─────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_run_cascade_and_notify_skips_notification_when_nothing_to_derive(monkeypatch):
-    """schedule_timeline_cascade fires unconditionally after every patch_chapter --
-    notifying on every no-op edit would spam the chat. Only notify when the cascade
-    actually derived something."""
-    from engine.setup_chat import timeline_auto
+async def test_cascade_notify_records_per_character_entries(monkeypatch):
+    from engine.setup_chat import timeline_auto as ta
 
-    async def fake_cascade(min_chapter, names=None, *, max_chapter=None, on_progress=None):
-        pass  # no targets -- on_progress never called
+    async def fake_run_timeline_cascade(min_chapter, names, *, on_progress=None):
+        await on_progress("甲", True, None)
+        await on_progress("乙", False, "乙 第4章推演失败")
 
-    monkeypatch.setattr(timeline_auto, "run_timeline_cascade", fake_cascade)
+    monkeypatch.setattr(ta, "run_timeline_cascade", fake_run_timeline_cascade)
+    monkeypatch.setattr(ta, "_broadcast_cascade_event", AsyncMock())
 
-    notify_calls = []
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
-    class _FakeHub:
-        async def broadcast(self, ev):
-            pass
+    REVIEW_FEEDBACK.mark_pending("n", ("timeline",))
+    await ta._run_cascade_and_notify(1, ["甲", "乙"], "n", notify_chat=True)
 
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            notify_calls.append((novel_id, summary))
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
-    await timeline_auto._run_cascade_and_notify(1, None, "n")
-
-    assert notify_calls == []
+    assert len(hub.notices) == 1
+    body = hub.notices[0][1]
+    assert "角色「甲」时间线" in body and "重新推演" in body
+    assert "角色「乙」时间线" in body and "第4章推演失败" in body
 
 
 @pytest.mark.asyncio
-async def test_run_cascade_and_notify_reports_derived_characters(monkeypatch):
-    from engine.setup_chat import timeline_auto
+async def test_cascade_no_results_releases_barrier(monkeypatch):
+    from engine.setup_chat import timeline_auto as ta
 
-    async def fake_cascade(min_chapter, names=None, *, max_chapter=None, on_progress=None):
+    async def fake_run_timeline_cascade(min_chapter, names, *, on_progress=None):
+        return  # nothing to derive
+
+    monkeypatch.setattr(ta, "run_timeline_cascade", fake_run_timeline_cascade)
+    monkeypatch.setattr(ta, "_broadcast_cascade_event", AsyncMock())
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
+
+    REVIEW_FEEDBACK.mark_pending("n", ("timeline",))
+    await ta._run_cascade_and_notify(1, None, "n", notify_chat=True)
+
+    assert hub.notices == []
+    assert REVIEW_FEEDBACK.has_pending("n") is False
+
+
+@pytest.mark.asyncio
+async def test_cascade_notify_chat_false_never_touches_buffer(monkeypatch):
+    from engine.setup_chat import timeline_auto as ta
+
+    async def fake_run_timeline_cascade(min_chapter, names, *, on_progress=None):
+        await on_progress("甲", True, None)
+
+    monkeypatch.setattr(ta, "run_timeline_cascade", fake_run_timeline_cascade)
+    monkeypatch.setattr(ta, "_broadcast_cascade_event", AsyncMock())
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
+
+    await ta._run_cascade_and_notify(1, ["甲"], "n", notify_chat=False)
+    assert hub.notices == [] and REVIEW_FEEDBACK.snapshot("n") == []
+
+
+@pytest.mark.asyncio
+async def test_second_cascade_replaces_same_character_keeps_others(monkeypatch):
+    from engine.setup_chat import timeline_auto as ta
+
+    monkeypatch.setattr(ta, "_broadcast_cascade_event", AsyncMock())
+    hub = _FakeHub(busy=True)  # hold batch
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
+
+    async def cascade_AB(min_chapter, names, *, on_progress=None):
         await on_progress("甲", True, None)
         await on_progress("乙", True, None)
 
-    monkeypatch.setattr(timeline_auto, "run_timeline_cascade", fake_cascade)
+    monkeypatch.setattr(ta, "run_timeline_cascade", cascade_AB)
+    REVIEW_FEEDBACK.mark_pending("n", ("timeline",))
+    await ta._run_cascade_and_notify(1, ["甲", "乙"], "n", notify_chat=True)
+    assert {e.label for e in REVIEW_FEEDBACK.snapshot("n")} == {"角色「甲」时间线", "角色「乙」时间线"}
 
-    notify_calls = []
+    async def cascade_BC(min_chapter, names, *, on_progress=None):
+        await on_progress("乙", False, "乙 重推失败")
+        await on_progress("丙", True, None)
 
-    class _FakeHub:
-        async def broadcast(self, ev):
-            pass
+    monkeypatch.setattr(ta, "run_timeline_cascade", cascade_BC)
+    REVIEW_FEEDBACK.mark_pending("n", ("timeline",))
+    await ta._run_cascade_and_notify(1, ["乙", "丙"], "n", notify_chat=True)
 
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            notify_calls.append((novel_id, summary))
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
-    await timeline_auto._run_cascade_and_notify(1, None, "n")
-
-    assert len(notify_calls) == 1
-    novel_id, summary = notify_calls[0]
-    assert novel_id == "n"
-    assert "甲" in summary and "乙" in summary
+    snap = {e.label: e for e in REVIEW_FEEDBACK.snapshot("n")}
+    assert set(snap) == {"角色「甲」时间线", "角色「乙」时间线", "角色「丙」时间线"}
+    assert "重推失败" in snap["角色「乙」时间线"].body  # 乙 replaced in place
 
 
-@pytest.mark.asyncio
-async def test_run_cascade_and_notify_scoped_names_still_notify(monkeypatch):
-    from engine.setup_chat import timeline_auto
+def test_settle_cascade_marks_pending_only_when_notify_chat(monkeypatch):
+    import api.services.scheduler as sched
+    from engine.setup_chat import timeline_auto as ta
+    monkeypatch.setattr(sched.SCHEDULER, "schedule_once", lambda *a, **k: None)
+    monkeypatch.setattr(sched.SCHEDULER, "cancel_once", lambda name: None)
+    monkeypatch.setattr(ta, "_broadcast_cascade_event", AsyncMock())
 
-    async def fake_cascade(min_chapter, names=None, *, max_chapter=None, on_progress=None):
-        await on_progress("甲", True, None)
+    ta._CASCADE_PENDING["n"] = ta._CascadePendingScope(names={"甲"}, min_chapter=1, notify_chat=False)
+    asyncio.run(ta._settle_cascade("n"))
+    assert REVIEW_FEEDBACK.has_pending("n") is False
 
-    monkeypatch.setattr(timeline_auto, "run_timeline_cascade", fake_cascade)
-
-    notify_calls = []
-
-    class _FakeHub:
-        async def broadcast(self, ev):
-            pass
-
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            notify_calls.append((novel_id, summary))
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
-    await timeline_auto._run_cascade_and_notify(1, ["甲"], "n")
-
-    assert notify_calls[0][0] == "n"
-    assert "甲" in notify_calls[0][1]
+    ta._CASCADE_PENDING["n"] = ta._CascadePendingScope(names={"甲"}, min_chapter=1, notify_chat=True)
+    asyncio.run(ta._settle_cascade("n"))
+    assert REVIEW_FEEDBACK.has_pending("n") is True
 
 
 @pytest.mark.asyncio
-async def test_run_cascade_and_notify_skips_notice_when_notify_chat_false(monkeypatch):
-    """Manual cast-page edits schedule notify_chat=False: derivation still runs and writes
-    archives, only the chat-transcript notice is suppressed."""
-    from engine.setup_chat import timeline_auto
+async def test_timeline_cascade_timeout_retries_once_then_reports(monkeypatch):
+    from engine.setup_chat import timeline_auto as ta
 
-    async def fake_cascade(min_chapter, names=None, *, max_chapter=None, on_progress=None):
-        await on_progress("甲", True, None)
+    REVIEW_FEEDBACK.clear_all("n")
+    scheduled: list = []
+    import api.services.scheduler as sched
+    monkeypatch.setattr(sched.SCHEDULER, "schedule_once", lambda *a, **k: scheduled.append(a))
+    monkeypatch.setattr(ta, "_broadcast_cascade_event", AsyncMock())
 
-    monkeypatch.setattr(timeline_auto, "run_timeline_cascade", fake_cascade)
+    reported: list = []
 
-    notify_calls = []
+    class _Hub:
+        async def report_review_done(self, nid, pkey, entries):
+            reported.append((pkey, entries))
 
-    class _FakeHub:
-        async def broadcast(self, ev):
-            pass
+    monkeypatch.setattr("api.routes._hub_instance", lambda: _Hub())
 
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            notify_calls.append((novel_id, summary))
+    await ta._on_cascade_timeout("n", min_chapter=1, names=["甲"], notify_chat=True)
+    assert scheduled and not reported
 
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
-    await timeline_auto._run_cascade_and_notify(1, ["甲"], "n", notify_chat=False)
-
-    assert notify_calls == []
-
-
-@pytest.mark.asyncio
-async def test_run_cascade_and_notify_surfaces_failures_in_summary(monkeypatch):
-    from engine.setup_chat import timeline_auto
-
-    async def fake_cascade(min_chapter, names=None, *, max_chapter=None, on_progress=None):
-        await on_progress("甲", False, "第3章「甲」角色档案推演失败（已重试用尽）")
-
-    monkeypatch.setattr(timeline_auto, "run_timeline_cascade", fake_cascade)
-
-    notify_calls = []
-
-    class _FakeHub:
-        async def broadcast(self, ev):
-            pass
-
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            notify_calls.append((novel_id, summary))
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
-    await timeline_auto._run_cascade_and_notify(1, None, "n")
-
-    assert "推演失败" in notify_calls[0][1]
-
-
-@pytest.mark.asyncio
-async def test_run_cascade_and_notify_pins_novel_id_around_the_cascade(monkeypatch):
-    """Same regression class as skeleton_background_review's equivalent guard: this
-    coroutine runs on SCHEDULER's own background loop task, unrelated to whichever
-    request originally scheduled it."""
-    from engine.setup_chat import timeline_auto
-    from utils.paths import active_novel_id
-
-    monkeypatch.setattr("utils.paths._active_novel_id", lambda: "other-novel")
-
-    observed = []
-
-    async def fake_cascade(min_chapter, names=None, *, max_chapter=None, on_progress=None):
-        observed.append(active_novel_id())
-        await on_progress("甲", True, None)
-
-    monkeypatch.setattr(timeline_auto, "run_timeline_cascade", fake_cascade)
-
-    class _FakeHub:
-        async def broadcast(self, ev):
-            pass
-
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            pass
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
-    await timeline_auto._run_cascade_and_notify(1, None, "n")
-
-    assert observed == ["n"]
-    assert active_novel_id() == "other-novel"
-
-
-# ── schedule_timeline_cascade novel pinning ──────────────────────────────────
+    await ta._on_cascade_timeout("n", min_chapter=1, names=["甲"], notify_chat=True)
+    assert reported and reported[0][1][0][1].status.value == "timeout"
 
 
 def test_schedule_timeline_cascade_captures_novel_id_at_schedule_time(monkeypatch):
@@ -754,4 +744,4 @@ def test_schedule_timeline_cascade_captures_novel_id_at_schedule_time(monkeypatc
     monkeypatch.setattr("utils.paths.active_novel_id", lambda: "some-other-novel")
     asyncio.run(captured["coro"]())
 
-    assert settle_calls == ["n"]  # "n", captured before the active novel changed
+    assert settle_calls == ["n"]

@@ -1,16 +1,55 @@
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
+from api.services.setup_chat_review_feedback import REVIEW_FEEDBACK, render_review_feedback
 from engine.author_loop.self_review import SelfReviewVerdict
 from engine.setup_chat.chapter_review import StageReview, TransitionReview
 
 
+class _FakeHub:
+    """Mirrors the real MessageHub.report_review_done / _maybe_flush_review_feedback so
+    module tests can assert the end-to-end batched notice."""
+
+    def __init__(self, *, busy: bool = False):
+        self.broadcasts: list[dict] = []
+        self.notices: list[tuple[str, str]] = []
+        self._busy = busy
+
+    async def broadcast(self, event):
+        self.broadcasts.append(event)
+
+    def is_setup_chat_busy(self, novel_id=None) -> bool:
+        return self._busy
+
+    async def trigger_system_notice_turn(self, novel_id, summary):
+        self.notices.append((novel_id, summary))
+
+    async def report_review_done(self, novel_id, pending_key, entries):
+        for bkey, entry in entries:
+            REVIEW_FEEDBACK.record(novel_id, bkey, entry)
+        REVIEW_FEEDBACK.clear_pending(novel_id, pending_key)
+        REVIEW_FEEDBACK.reset_attempt(novel_id, pending_key)
+        await self._maybe_flush(novel_id)
+
+    async def _maybe_flush(self, novel_id):
+        if REVIEW_FEEDBACK.has_pending(novel_id):
+            return
+        entries = REVIEW_FEEDBACK.snapshot(novel_id)
+        if not entries or self._busy:
+            return
+        REVIEW_FEEDBACK.clear_buffer(novel_id)
+        await self.trigger_system_notice_turn(novel_id, render_review_feedback(entries))
+
+
 @pytest.fixture(autouse=True)
-def _reset_review_active():
+def _clean_review_feedback():
     from engine.setup_chat import skeleton_pipeline as sp
     sp._ACTIVE_REVIEWS.clear()
+    REVIEW_FEEDBACK.clear_all("n")
     yield
     sp._ACTIVE_REVIEWS.clear()
+    REVIEW_FEEDBACK.clear_all("n")
 
 
 def _accept(score=9.0):
@@ -81,6 +120,7 @@ def test_schedule_chapter_review_fix_registers_a_dedup_once_event(monkeypatch):
     assert captured["delay_s"] == 0.0
     assert captured["dedup"] is True
     assert captured["on_timeout"] is not None
+    assert REVIEW_FEEDBACK.has_pending("n") is True
 
 
 # ── _run_chapter_review_fix ──────────────────────────────────────────────────
@@ -121,51 +161,52 @@ def _plot(chapter=3):
 
 
 @pytest.mark.asyncio
-async def test_run_chapter_review_fix_notifies_and_clears_gate_when_review_passes(
-    monkeypatch,
-):
+async def test_run_chapter_review_all_pass_records_clean(monkeypatch):
     from engine.setup_chat import skeleton_background_review as sbr
-    from engine.setup_chat import skeleton_pipeline as sp
 
-    repo = _FakeRepo(_plot())
-    monkeypatch.setattr("repositories.get_plot_repo", lambda: repo)
+    class _Repo:
+        def list_raw(self):
+            return [{"chapter": 3, "stages": [{"stage_num": 1, "beats": []}]}]
 
-    async def fake_transition_review(stages):
+    monkeypatch.setattr("repositories.get_plot_repo", _Repo)
+
+    async def _no_transitions(stages):
         return []
 
-    async def fake_stage_review(stages):
-        return [StageReview(1, _accept()), StageReview(2, _accept())]
+    async def _no_stage_issues(stages):
+        return []
 
-    monkeypatch.setattr(sbr, "run_chapter_transition_review", fake_transition_review)
-    monkeypatch.setattr(sbr, "run_chapter_stage_review", fake_stage_review)
+    monkeypatch.setattr(sbr, "run_chapter_transition_review", _no_transitions)
+    monkeypatch.setattr(sbr, "run_chapter_stage_review", _no_stage_issues)
 
-    generate_calls = []
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
-    async def fail_if_called(chapter, stage_num, *, overview, is_revision):
-        generate_calls.append((chapter, stage_num))
-        raise AssertionError("must not regenerate when nothing failed review")
-
-    monkeypatch.setattr(sbr.skeleton_writer, "generate_stage_beats", fail_if_called)
-
-    notify_calls = []
-
-    class _FakeHub:
-        async def broadcast(self, ev):
-            pass
-
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            notify_calls.append((novel_id, summary))
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
+    REVIEW_FEEDBACK.mark_pending("n", ("skeleton", 3))
     await sbr._run_chapter_review_fix(3, "n")
 
-    assert generate_calls == []
-    assert sp.is_review_active("n", 3) is False
-    assert len(notify_calls) == 1
-    novel_id, summary = notify_calls[0]
-    assert novel_id == "n"
-    assert "文风通过" in summary
+    assert len(hub.notices) == 1
+    assert "【通过，无需调整】第3章骨架" in hub.notices[0][1]
+
+
+@pytest.mark.asyncio
+async def test_run_chapter_review_deleted_chapter_records_resolved_error(monkeypatch):
+    from engine.setup_chat import skeleton_background_review as sbr
+
+    class _Repo:
+        def list_raw(self):
+            return []
+
+    monkeypatch.setattr("repositories.get_plot_repo", _Repo)
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
+
+    REVIEW_FEEDBACK.mark_pending("n", ("skeleton", 3))
+    await sbr._run_chapter_review_fix(3, "n")
+
+    assert len(hub.notices) == 1
+    assert "━━ 第3章骨架 ━━" in hub.notices[0][1]
+    assert "已被删除" in hub.notices[0][1] or "审查中止" in hub.notices[0][1]
 
 
 @pytest.mark.asyncio
@@ -195,15 +236,10 @@ async def test_run_chapter_review_fix_pins_novel_id_around_repo_access(monkeypat
     monkeypatch.setattr(sbr, "run_chapter_transition_review", fake_transition_review)
     monkeypatch.setattr(sbr, "run_chapter_stage_review", fake_stage_review)
 
-    class _FakeHub:
-        async def broadcast(self, ev):
-            pass
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            pass
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
+    REVIEW_FEEDBACK.mark_pending("n", ("skeleton", 3))
     await sbr._run_chapter_review_fix(3, "n")
 
     assert observed_novel_ids == ["n"]  # pinned to the scheduling novel while the job ran
@@ -231,22 +267,16 @@ async def test_run_chapter_review_fix_clears_gate_and_notifies_even_on_llm_excep
 
     monkeypatch.setattr(sbr, "run_chapter_stage_review", fake_stage_review)
 
-    notify_calls = []
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
-    class _FakeHub:
-        async def broadcast(self, ev):
-            pass
-
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            notify_calls.append((novel_id, summary))
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
+    REVIEW_FEEDBACK.mark_pending("n", ("skeleton", 3))
     await sbr._run_chapter_review_fix(3, "n")
 
     assert sp.is_review_active("n", 3) is False
-    assert len(notify_calls) == 1
-    assert "异常" in notify_calls[0][1]
+    assert len(hub.notices) == 1
+    assert "━━ 第3章骨架 ━━" in hub.notices[0][1]
+    assert "异常" in hub.notices[0][1]
 
 
 @pytest.mark.asyncio
@@ -270,20 +300,13 @@ async def test_run_chapter_review_fix_does_not_rebroadcast_started_when_another_
     monkeypatch.setattr(sbr, "run_chapter_transition_review", fake_transition_review)
     monkeypatch.setattr(sbr, "run_chapter_stage_review", fake_stage_review)
 
-    broadcasts = []
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
-    class _FakeHub:
-        async def broadcast(self, ev):
-            broadcasts.append(ev)
-
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            pass
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
+    REVIEW_FEEDBACK.mark_pending("n", ("skeleton", 3))
     await sbr._run_chapter_review_fix(3, "n")
 
-    types = [b["type"] for b in broadcasts]
+    types = [b["type"] for b in hub.broadcasts]
     assert "skeleton_review_started" not in types  # chapter 99 was already active
     assert "skeleton_review_done" not in types  # chapter 99 is still active after 3 finishes
     assert sp.is_review_active("n", 99) is True  # untouched
@@ -303,25 +326,17 @@ async def test_run_chapter_review_fix_cancellation_leaves_active_flag_set_and_sk
 
     monkeypatch.setattr(sbr, "run_chapter_transition_review", boom)
 
-    notify_calls = []
-    broadcasts = []
-
-    class _FakeHub:
-        async def broadcast(self, ev):
-            broadcasts.append(ev)
-
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            notify_calls.append((novel_id, summary))
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
     monkeypatch.setattr("repositories.get_plot_repo", lambda: _FakeRepo(_plot()))
 
+    REVIEW_FEEDBACK.mark_pending("n", ("skeleton", 3))
     with pytest.raises(asyncio.CancelledError):
         await sbr._run_chapter_review_fix(3, "n")
 
     assert sp.is_review_active("n", 3) is True  # still marked active, not cleared
-    assert notify_calls == []
-    assert "skeleton_review_done" not in [b["type"] for b in broadcasts]
+    assert hub.notices == []
+    assert "skeleton_review_done" not in [b["type"] for b in hub.broadcasts]
 
 
 @pytest.mark.asyncio
@@ -356,24 +371,18 @@ async def test_run_chapter_review_fix_runs_fix_agent_once_then_notifies_without_
 
     monkeypatch.setattr(sbr, "run_chapter_skeleton_fix_agent", fake_fix_agent)
 
-    notify_calls = []
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
-    class _FakeHub:
-        async def broadcast(self, ev):
-            pass
-
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            notify_calls.append((novel_id, summary))
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
+    REVIEW_FEEDBACK.mark_pending("n", ("skeleton", 3))
     await sbr._run_chapter_review_fix(3, "n")
 
     assert review_call_count["n"] == 1  # exactly one review pass, no re-review
     assert fix_calls == [(3, {2: ["段尾升华句"]})]
     assert sp.is_review_active("n", 3) is False
-    assert len(notify_calls) == 1
-    assert "已重新生成 stage 2" in notify_calls[0][1]
+    assert len(hub.notices) == 1
+    assert "━━ 第3章骨架 ━━" in hub.notices[0][1]
+    assert "已重新生成 stage 2" in hub.notices[0][1]
 
 
 @pytest.mark.asyncio
@@ -400,21 +409,15 @@ async def test_run_chapter_review_fix_skips_fix_agent_when_nothing_failed(monkey
 
     monkeypatch.setattr(sbr, "run_chapter_skeleton_fix_agent", fail_if_called)
 
-    notify_calls = []
+    hub = _FakeHub()
+    monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
-    class _FakeHub:
-        async def broadcast(self, ev):
-            pass
-
-        async def trigger_system_notice_turn(self, novel_id, summary):
-            notify_calls.append((novel_id, summary))
-
-    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
-
+    REVIEW_FEEDBACK.mark_pending("n", ("skeleton", 3))
     await sbr._run_chapter_review_fix(3, "n")
 
     assert fix_calls == []
-    assert len(notify_calls) == 1
+    assert len(hub.notices) == 1
+    assert "【通过，无需调整】第3章骨架" in hub.notices[0][1]
 
 
 @pytest.mark.asyncio
@@ -462,3 +465,31 @@ async def test_run_chapter_skeleton_fix_agent_invokes_shared_runner(monkeypatch)
     assert result == "已重新生成 stage 2。"
     assert captured["node_name"] == "chapter_skeleton_fix_agent"
     assert "段尾升华句" in captured["task_text"]
+
+
+@pytest.mark.asyncio
+async def test_skeleton_review_timeout_retries_once_then_reports(monkeypatch):
+    from engine.setup_chat import skeleton_background_review as sbr
+    from engine.setup_chat import skeleton_pipeline
+
+    REVIEW_FEEDBACK.clear_all("n")
+    scheduled: list = []
+    import api.services.scheduler as sched
+    monkeypatch.setattr(sched.SCHEDULER, "schedule_once", lambda *a, **k: scheduled.append(a))
+    monkeypatch.setattr(skeleton_pipeline, "clear_review_active", lambda *a: None)
+    monkeypatch.setattr(skeleton_pipeline, "any_review_active", lambda nid: False)
+    monkeypatch.setattr(sbr, "_broadcast_skeleton_event", AsyncMock())
+
+    reported: list = []
+
+    class _Hub:
+        async def report_review_done(self, nid, pkey, entries):
+            reported.append((pkey, entries))
+
+    monkeypatch.setattr("api.routes._hub_instance", lambda: _Hub())
+
+    await sbr._on_chapter_review_timeout("n", 3)
+    assert scheduled and not reported
+
+    await sbr._on_chapter_review_timeout("n", 3)
+    assert reported and reported[0][1][0][1].status.value == "timeout"

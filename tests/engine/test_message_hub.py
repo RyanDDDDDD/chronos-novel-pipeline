@@ -1,6 +1,5 @@
-import asyncio
-
 """Tests for MessageHub (Broadcast/Client/Master Interaction) with FastAPI endpoints."""
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -3934,3 +3933,120 @@ async def test_trigger_system_notice_turn_writes_target_novel_session_not_active
     )
     start_calls = [c.args[0] for c in broadcast.await_args_list if c.args]
     assert any(ev.get("type") == "setup_chat_start" and ev.get("novel_id") == "novel-b" for ev in start_calls)
+
+
+@pytest.fixture
+def _clean_review_feedback():
+    from api.services.setup_chat_review_feedback import REVIEW_FEEDBACK
+    REVIEW_FEEDBACK.clear_all("n")
+    yield REVIEW_FEEDBACK
+    REVIEW_FEEDBACK.clear_all("n")
+
+
+@pytest.mark.asyncio
+async def test_report_review_done_holds_batch_while_pending(monkeypatch, _clean_review_feedback):
+    from api.services.message_hub import MessageHub
+    from api.services.setup_chat_review_feedback import ReviewFeedbackEntry, ReviewStatus
+
+    rf = _clean_review_feedback
+    hub = MessageHub()
+    notices: list[tuple[str, str]] = []
+    monkeypatch.setattr(hub, "is_setup_chat_busy", lambda novel_id=None: False)
+
+    async def fake_trigger(novel_id, text):
+        notices.append((novel_id, text))
+
+    monkeypatch.setattr(hub, "trigger_system_notice_turn", fake_trigger)
+
+    rf.mark_pending("n", ("character", "甲"))
+    rf.mark_pending("n", ("character", "乙"))
+
+    await hub.report_review_done(
+        "n", ("character", "甲"),
+        [(("character", "甲"), ReviewFeedbackEntry("character", "角色「甲」", ReviewStatus.CLEAN, ""))],
+    )
+    assert notices == []  # 乙 still pending
+
+    await hub.report_review_done(
+        "n", ("character", "乙"),
+        [(("character", "乙"), ReviewFeedbackEntry("character", "角色「乙」", ReviewStatus.RESOLVED, "已修"))],
+    )
+    assert len(notices) == 1
+    assert "角色「甲」" in notices[0][1] and "角色「乙」" in notices[0][1]
+    assert rf.snapshot("n") == []  # buffer drained
+
+
+@pytest.mark.asyncio
+async def test_maybe_flush_defers_while_agent_busy_then_flushes_on_turn_finished(
+    monkeypatch, _clean_review_feedback
+):
+    from api.services.message_hub import MessageHub
+    from api.services.setup_chat_review_feedback import ReviewFeedbackEntry, ReviewStatus
+
+    rf = _clean_review_feedback
+    hub = MessageHub()
+    notices: list[str] = []
+    busy = {"v": True}
+    monkeypatch.setattr(hub, "is_setup_chat_busy", lambda novel_id=None: busy["v"])
+
+    async def fake_trigger(novel_id, text):
+        notices.append(text)
+
+    monkeypatch.setattr(hub, "trigger_system_notice_turn", fake_trigger)
+    monkeypatch.setattr(hub, "_finish_incomplete_image_progress", AsyncMock())
+    monkeypatch.setattr(hub, "_try_drain_setup_chat_queue", AsyncMock())
+
+    rf.mark_pending("n", ("world",))
+    await hub.report_review_done(
+        "n", ("world",),
+        [(("world",), ReviewFeedbackEntry("world", "世界观", ReviewStatus.RESOLVED, "已修"))],
+    )
+    assert notices == []  # pending clear but agent busy
+
+    busy["v"] = False
+    await hub._on_setup_chat_turn_finished("n")
+    assert len(notices) == 1 and "世界观" in notices[0]
+
+
+@pytest.mark.asyncio
+async def test_report_review_done_empty_entries_only_releases_barrier(
+    monkeypatch, _clean_review_feedback
+):
+    from api.services.message_hub import MessageHub
+    from api.services.setup_chat_review_feedback import ReviewFeedbackEntry, ReviewStatus
+
+    rf = _clean_review_feedback
+    hub = MessageHub()
+    notices: list[str] = []
+    monkeypatch.setattr(hub, "is_setup_chat_busy", lambda novel_id=None: False)
+
+    async def fake_trigger(novel_id, text):
+        notices.append(text)
+
+    monkeypatch.setattr(hub, "trigger_system_notice_turn", fake_trigger)
+
+    rf.mark_pending("n", ("character", "甲"))
+    rf.record("n", ("world",), ReviewFeedbackEntry("world", "世界观", ReviewStatus.CLEAN, ""))
+
+    # 甲 was deleted mid-review -> empty entries, just release its barrier unit
+    await hub.report_review_done("n", ("character", "甲"), [])
+    assert len(notices) == 1  # world entry now flushes (no pending left)
+    assert "世界观" in notices[0]
+
+
+@pytest.mark.asyncio
+async def test_reset_setup_chat_clears_review_feedback(monkeypatch, _clean_review_feedback, tmp_path):
+    import api.services.message_hub as mh_mod
+    from api.services.message_hub import MessageHub
+    from api.services.setup_chat_review_feedback import ReviewFeedbackEntry, ReviewStatus
+
+    rf = _clean_review_feedback
+    monkeypatch.setattr(mh_mod, "active_novel_id", lambda: "n")
+    hub = MessageHub()
+    monkeypatch.setattr(hub, "broadcast", AsyncMock())
+
+    rf.mark_pending("n", ("world",))
+    rf.record("n", ("world",), ReviewFeedbackEntry("world", "世界观", ReviewStatus.CLEAN, ""))
+    await hub.reset_setup_chat("n")
+    assert rf.has_pending("n") is False and rf.snapshot("n") == []
+

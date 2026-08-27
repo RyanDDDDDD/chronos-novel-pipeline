@@ -12,17 +12,16 @@ from __future__ import annotations
 
 import asyncio
 
+from api.services.setup_chat_review_feedback import (
+    REVIEW_FEEDBACK,
+    ReviewFeedbackEntry,
+    ReviewKey,
+    ReviewStatus,
+    handle_review_timeout,
+)
 from utils.paths import use_novel
 
 from engine.setup_chat.world_tools import WORLD_DIMENSION_TOOLS
-
-#Appended to any non-empty review/fix summary sent to the chat agent -- the review+fix
-#pipeline is fully self-healing (see module docstring), but the chat agent would otherwise
-#read the rubric/fix report as an open action item and re-invoke edit_character on its own,
-#duplicating (or fighting) the fix agent's already-applied write.
-_AUTO_RESOLVED_NOTICE = (
-    "以上是后台自动审查与修复的结果，仅供你了解情况；不需要、也不要据此再手动调用工具修改。"
-)
 
 _ADD_WORLD_RACE_TOOL = next(t for t in WORLD_DIMENSION_TOOLS if t.name == "add_world_race")
 
@@ -83,17 +82,39 @@ def schedule_character_quality_review(name: str, *, notify_chat: bool = True) ->
     from utils.paths import active_novel_id
 
     novel_id = active_novel_id()
+    if notify_chat:
+        REVIEW_FEEDBACK.mark_pending(novel_id, ("character", name))
     SCHEDULER.schedule_once(
         f"character-fix:{novel_id}:{name}", 0.0,
         lambda: _run_character_review(novel_id, name, notify_chat=notify_chat), dedup=True,
-        on_timeout=lambda: _on_character_review_timeout(novel_id, name),
+        on_timeout=lambda: _on_character_review_timeout(novel_id, name, notify_chat=notify_chat),
     )
 
 
-async def _on_character_review_timeout(novel_id: str, name: str) -> None:
-    clear_review_active(novel_id, name)
-    if not any_review_active(novel_id):
-        await _broadcast_character_review_event(novel_id, "character_review_done"    )
+async def _on_character_review_timeout(novel_id: str, name: str, *, notify_chat: bool = True) -> None:
+    async def _give_up() -> None:
+        clear_review_active(novel_id, name)
+        if not any_review_active(novel_id):
+            await _broadcast_character_review_event(novel_id, "character_review_done")
+
+    if not notify_chat:
+        await _give_up()
+        return
+
+    def _retry() -> None:
+        from api.services.scheduler import SCHEDULER
+
+        SCHEDULER.schedule_once(
+            f"character-fix:{novel_id}:{name}", 0.0,
+            lambda: _run_character_review(novel_id, name, notify_chat=notify_chat),
+            dedup=True,
+            on_timeout=lambda: _on_character_review_timeout(novel_id, name, notify_chat=notify_chat),
+        )
+
+    await handle_review_timeout(
+        novel_id, ("character", name), kind="character", label=f"角色「{name}」",
+        retry=_retry, give_up=_give_up,
+    )
 
 
 async def run_character_fix_agent(name: str, rubric: str) -> str:
@@ -120,6 +141,8 @@ async def _run_character_review(novel_id: str, name: str, *, notify_chat: bool =
     )
     from engine.setup_chat.tools import _name_key
 
+    key = ("character", name)
+
     is_first = not any_review_active(novel_id)
     mark_review_active(novel_id, name)
 
@@ -127,38 +150,47 @@ async def _run_character_review(novel_id: str, name: str, *, notify_chat: bool =
         if is_first:
             await _broadcast_character_review_event(novel_id, "character_review_started")
 
-        fix_stale = False
+        entry: ReviewFeedbackEntry | None = None
+        release_only = False
+
         with use_novel(novel_id):
             roster = get_lore_repo().list_raw()
             char = next((c for c in roster if isinstance(c, dict) and _name_key(c) == name), None)
             if char is None:
-                return  # 审查排队期间角色被删了，静默结束
-
-            race_advisory = race_mismatch_advisory(char)
-            verdict = await run_cast_review(char)
-            needs_fix = verdict.action != "accept" or bool(race_advisory)
-            if not needs_fix:
-                summary = f"「{name}」的角色卡审查通过，无需调整。"
+                release_only = True  # 审查排队期间角色被删了
             else:
-                rubric = format_agent_rubric(verdict, active_hooks(SETUP_CAST_HOOK_NAMES))
-                feedback = rubric
-                if race_advisory:
-                    block = f"【种族设定】\n{race_advisory}"
-                    feedback = f"{feedback}\n\n{block}" if feedback else block
-                try:
-                    fix_report = await run_character_fix_agent(name, feedback)
-                    fix_stale = "已被修改" in fix_report
-                    summary = f"「{name}」的角色卡审查发现以下问题：\n\n{feedback}\n\n已自动修复：{fix_report}"
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:  # noqa: BLE001 - a crashed fix agent must still notify
-                    summary = f"「{name}」的角色卡审查发现以下问题：\n\n{feedback}\n\n（自动修复异常：{exc}）"
-                summary = f"{summary}\n\n{_AUTO_RESOLVED_NOTICE}"
+                race_advisory = race_mismatch_advisory(char)
+                verdict = await run_cast_review(char)
+                needs_fix = verdict.action != "accept" or bool(race_advisory)
+                if not needs_fix:
+                    entry = ReviewFeedbackEntry(
+                        "character", f"角色「{name}」", ReviewStatus.CLEAN, "")
+                else:
+                    rubric = format_agent_rubric(verdict, active_hooks(SETUP_CAST_HOOK_NAMES))
+                    feedback = rubric
+                    if race_advisory:
+                        block = f"【种族设定】\n{race_advisory}"
+                        feedback = f"{feedback}\n\n{block}" if feedback else block
+                    try:
+                        fix_report = await run_character_fix_agent(name, feedback)
+                        if "已被修改" in fix_report:
+                            release_only = True  # fix agent 输掉 CAS，静默放行
+                        else:
+                            body = f"「{name}」的角色卡审查发现以下问题：\n\n{feedback}\n\n已自动修复：{fix_report}"
+                            entry = ReviewFeedbackEntry("character", f"角色「{name}」", ReviewStatus.RESOLVED, body)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:  # noqa: BLE001 - a crashed fix agent must still notify
+                        body = f"「{name}」的角色卡审查发现以下问题：\n\n{feedback}\n\n（自动修复异常：{exc}）"
+                        entry = ReviewFeedbackEntry("character", f"角色「{name}」", ReviewStatus.RESOLVED, body)
 
-        if notify_chat and not fix_stale:
+        if notify_chat:
             from api.routes import _hub_instance
 
-            await _hub_instance().trigger_system_notice_turn(novel_id, summary)
+            entries: list[tuple[ReviewKey, ReviewFeedbackEntry]] = (
+                [] if (entry is None or release_only) else [(key, entry)]
+            )
+            await _hub_instance().report_review_done(novel_id, key, entries)
     finally:
         clear_review_active(novel_id, name)
         if not any_review_active(novel_id):
