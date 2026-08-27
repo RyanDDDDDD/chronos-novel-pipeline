@@ -15,12 +15,13 @@ from repo_test_helpers import init_store, seed_lore, seed_plot, seed_world
 def _isolate_novel(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path / "novels"))
     monkeypatch.setenv("CHRONOS_ACTIVE_NOVEL", "default")
-    (tmp_path / "novels" / "default").mkdir(parents=True)
+    (tmp_path / "novels" / "default").mkdir(parents=True, exist_ok=True)
     (tmp_path / "novels" / "active.json").write_text(
         json.dumps({"active": "default"}), encoding="utf-8"
     )
     import repositories
 
+    repositories.drop_repositories("default")
     repositories.reset_repositories()
 
 

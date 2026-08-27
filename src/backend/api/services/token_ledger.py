@@ -24,8 +24,12 @@ def ledger_path(novel_id: str | None = None) -> str:
 
 
 def load_ledger(novel_id: str | None = None) -> dict:
-    data = _store(novel_id).get_doc(_DOC_KEY, "")
-    return data if isinstance(data, dict) else {}
+    try:
+        data = _store(novel_id).get_doc(_DOC_KEY, "")
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        logger.warning("[token-ledger] load_ledger 失败：{}", e)
+        return {}
 
 
 def _atomic_write(doc: dict, novel_id: str | None) -> None:
@@ -40,7 +44,7 @@ run starts by clearing the cell (override semantics). Failure → downgrade (war
         doc.setdefault(subsystem, {})[key] = {
             "tokens_in": 0, "tokens_out": 0, "tokens_cached": 0, "model": ""}
         _atomic_write(doc, novel_id)
-    except OSError as e:
+    except Exception as e:
         logger.warning("[token-ledger] reset_cell 失败 {}/{}：{}", subsystem, key, e)
 
 
@@ -63,6 +67,6 @@ def add_to_cell(
         }
         doc.setdefault(subsystem, {})[key] = cell
         _atomic_write(doc, novel_id)
-    except OSError as e:
+    except Exception as e:
         logger.warning("[token-ledger] add_to_cell 失败 {}/{}：{}", subsystem, key, e)
     return cell

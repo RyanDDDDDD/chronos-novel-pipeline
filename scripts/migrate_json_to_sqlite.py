@@ -565,14 +565,13 @@ def _migrate_one(novel_id: str, *, dry_run: bool = False) -> dict[str, int]:
     if dry_run:
         return counts
 
-    sqlite_store = SqliteStore(novel_id)
-    try:
-        sqlite_store.save_lore(lore)
-        sqlite_store.save_plot(plot)
-        for name, chapter, data in archives:
-            sqlite_store.save_archive(name, chapter, data)
-    finally:
-        sqlite_store.close()
+    from repositories import get_archive_repo, get_lore_repo, get_plot_repo
+
+    get_lore_repo(novel_id).save_all(lore)
+    get_plot_repo(novel_id).save_all(plot)
+    arch_repo = get_archive_repo(novel_id)
+    for name, chapter, data in archives:
+        arch_repo.save(name, chapter, data)
 
     return counts
 

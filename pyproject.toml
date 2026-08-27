@@ -31,6 +31,8 @@ dependencies = [
     "pyahocorasick>=2.1.0",
     "pillow>=10.0",
     "keyring>=25.0",
+    "sqlmodel>=0.0.22",
+    "alembic>=1.13",
 ]
 
 [project.optional-dependencies]
@@ -87,3 +89,4 @@ disallow_untyped_defs = false
 ignore_missing_imports = true
 mypy_path = "src/backend"
 explicit_package_bases = true
+plugins = ["pydantic.mypy"]

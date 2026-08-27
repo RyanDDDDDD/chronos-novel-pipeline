@@ -19,33 +19,27 @@ def _restore_globals():
 
 def test_reset_repositories_clears_archive_cache(tmp_path, monkeypatch):
     import repositories
-    from repositories.sqlite_store import SqliteStore
 
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
-    store = SqliteStore("novel-A")
-    store.put_archive("甲", 1, {"name": "甲", "chapter": 1, "cached": True})
-    repositories._STORES["novel-A"] = store
+    lore = repositories.get_lore_repo("novel-A")
+    lore.save_all([{"name": "甲", "gender": "female"}])
+    arch_repo = repositories.get_archive_repo("novel-A")
+    arch_repo.put("甲", 1, {"name": "甲", "chapter": 1, "cached": True})
 
-    arch = repositories.get_archive_repo("novel-A").get("甲", 1)
+    arch = arch_repo.get("甲", 1)
     assert arch is not None and arch.name == "甲"
     repositories.reset_repositories("novel-A")
-    assert repositories.get_archive_repo("novel-A").get("甲", 1) is None
+    assert arch_repo.get("甲", 1) is None
 
 
 def test_store_is_sharded_per_novel(tmp_path, monkeypatch):
-    """Two different novel_ids get independent SqliteStore instances that don't clobber each other."""
+    """Two different novel_ids get independent instances that don't clobber each other."""
     import repositories
-    from repositories.sqlite_store import SqliteStore
 
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
 
-    store_a = SqliteStore("novel-A")
-    store_a.save_plot([{"chapter": 1, "title": "甲书第一章", "stages": []}])
-    repositories._STORES["novel-A"] = store_a
-
-    store_b = SqliteStore("novel-B")
-    store_b.save_plot([{"chapter": 1, "title": "乙书第一章", "stages": []}])
-    repositories._STORES["novel-B"] = store_b
+    repositories.get_plot_repo("novel-A").save_all([{"chapter": 1, "title": "甲书第一章", "stages": []}])
+    repositories.get_plot_repo("novel-B").save_all([{"chapter": 1, "title": "乙书第一章", "stages": []}])
 
     title_a, _ = repositories.get_plot_repo("novel-A").chapter_segments(1)
     title_b, _ = repositories.get_plot_repo("novel-B").chapter_segments(1)
@@ -55,12 +49,10 @@ def test_store_is_sharded_per_novel(tmp_path, monkeypatch):
 
 def test_drop_repositories_evicts_shard(tmp_path, monkeypatch):
     import repositories
-    from repositories.sqlite_store import SqliteStore
 
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
-    store = SqliteStore("novel-C")
-    repositories._STORES["novel-C"] = store
+    repositories.init_repositories("novel-C")
 
-    assert "novel-C" in repositories._STORES
+    assert "novel-C" in repositories.loaded_novel_ids()
     repositories.drop_repositories("novel-C")
-    assert "novel-C" not in repositories._STORES
+    assert "novel-C" not in repositories.loaded_novel_ids()

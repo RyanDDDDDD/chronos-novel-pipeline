@@ -22,6 +22,8 @@ def test_list_chapters_returns_all_chapters_from_sqlite_plot_repo():
 
 def test_list_chapters_empty_plot_falls_back_to_chapter_one():
     import repositories
+
     repositories.init_repositories()
+    repositories.get_plot_repo().save_all([])
 
     assert list_chapters() == [{"chapter": 1, "title": None}]

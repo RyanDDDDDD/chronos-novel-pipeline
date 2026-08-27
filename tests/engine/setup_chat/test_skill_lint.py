@@ -6,10 +6,12 @@ def _levels_for(findings, needle):
 
 
 def test_lint_clean_skill_no_findings(tmp_path):
-    pkg = tmp_path / "good"
+    skill_dir = tmp_path / "skills"
+    skill_dir.mkdir()
+    pkg = skill_dir / "good"
     pkg.mkdir()
     (pkg / "SKILL.md").write_text("---\nname: good\ndescription: 演示\n---\n正文", encoding="utf-8")
-    assert lint_dirs([str(tmp_path)]) == []
+    assert lint_dirs([str(skill_dir)]) == []
 
 
 def test_lint_reports_yaml_error_and_missing_description(tmp_path):
