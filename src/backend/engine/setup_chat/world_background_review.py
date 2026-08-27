@@ -8,6 +8,12 @@ import asyncio
 import contextlib
 from dataclasses import dataclass
 
+from api.services.setup_chat_review_feedback import (
+    REVIEW_FEEDBACK,
+    ReviewFeedbackEntry,
+    ReviewStatus,
+    handle_review_timeout,
+)
 from utils.paths import use_novel
 
 
@@ -25,7 +31,7 @@ def _merge_pending(
     *,
     complete: bool | None,
     novel_brief: str | None,
-) -> None:
+    ) -> None:
     pending = _PENDING.setdefault(novel_id, _PendingReview())
     if complete is True:
         pending.complete = True
@@ -49,14 +55,6 @@ def _render_summary(review_hint: str, error: str | None) -> str:
         lines.append(f"（后台审查异常：{error}）")
     return "\n".join(lines)
 
-
-#Appended to any non-empty review/fix summary sent to the chat agent -- the review+fix
-#pipeline is fully self-healing, but the chat agent would otherwise read the rubric/fix
-#report as an open action item and re-invoke set_world_*/edit_world_* on its own, duplicating
-#(or fighting) the fix agent's already-applied write.
-_AUTO_RESOLVED_NOTICE = (
-    "以上是后台自动审查与修复的结果，仅供你了解情况；不需要、也不要据此再手动调用工具修改。"
-)
 
 _WORLD_FIX_PROMPT = (
     "你是「世界观修复助手」，只负责根据质量评审反馈修改世界观设定的相应维度。\n"
@@ -92,6 +90,9 @@ async def _run_world_review(novel_id: str, params: _PendingReview) -> None:
         with use_novel(novel_id):
             bible = get_world_repo().get()
             if not isinstance(bible, dict) or not bible:
+                from api.routes import _hub_instance
+
+                await _hub_instance().report_review_done(novel_id, ("world",), [])
                 return
             _ok, review_hint = await gate_world_bible(
                 bible,
@@ -112,27 +113,30 @@ async def _run_world_review(novel_id: str, params: _PendingReview) -> None:
             lambda: _settle(novel_id),
             dedup=True,
         )
-        return
+        return  # another run is coming; keep the ("world",) barrier unit marked
 
     await _broadcast(novel_id, "world_review_done")
 
+    from api.routes import _hub_instance
+
     if error:
-        summary = f"{_render_summary('', error)}\n\n{_AUTO_RESOLVED_NOTICE}"
+        entry = ReviewFeedbackEntry(
+            "world", "世界观", ReviewStatus.RESOLVED,
+            _render_summary("", error),
+        )
     elif review_hint:
         try:
             fix_report = await run_world_fix_agent(review_hint)
-            summary = f"{review_hint}\n\n已自动修复：{fix_report}"
+            body = f"{review_hint}\n\n已自动修复：{fix_report}"
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - a crashed fix agent must still notify
-            summary = _render_summary(review_hint, str(exc))
-        summary = f"{summary}\n\n{_AUTO_RESOLVED_NOTICE}"
+            body = _render_summary(review_hint, str(exc))
+        entry = ReviewFeedbackEntry("world", "世界观", ReviewStatus.RESOLVED, body)
     else:
-        summary = "世界观审查通过，无需调整。"
+        entry = ReviewFeedbackEntry("world", "世界观", ReviewStatus.CLEAN, "")
 
-    from api.routes import _hub_instance
-
-    await _hub_instance().trigger_system_notice_turn(novel_id, summary)
+    await _hub_instance().report_review_done(novel_id, ("world",), [(("world",), entry)])
 
 
 async def _settle(novel_id: str) -> None:
@@ -156,7 +160,24 @@ async def _settle(novel_id: str) -> None:
 
 
 async def _on_world_review_timeout(novel_id: str) -> None:
-    await _broadcast(novel_id, "world_review_done")
+    def _retry() -> None:
+        from api.services.scheduler import SCHEDULER
+
+        SCHEDULER.schedule_once(
+            f"world-review-run:{novel_id}",
+            0.0,
+            lambda: _run_world_review(novel_id, _PendingReview()),
+            dedup=True,
+            on_timeout=lambda: _on_world_review_timeout(novel_id),
+        )
+
+    async def _give_up() -> None:
+        await _broadcast(novel_id, "world_review_done")
+
+    await handle_review_timeout(
+        novel_id, ("world",), kind="world", label="世界观",
+        retry=_retry, give_up=_give_up,
+    )
 
 
 def schedule_world_quality_review(
@@ -169,6 +190,7 @@ def schedule_world_quality_review(
     from utils.paths import active_novel_id
 
     novel_id = active_novel_id()
+    REVIEW_FEEDBACK.mark_pending(novel_id, ("world",))
     _merge_pending(novel_id, complete=complete, novel_brief=novel_brief)
     SCHEDULER.schedule_once(
         f"world-review-settle:{novel_id}",

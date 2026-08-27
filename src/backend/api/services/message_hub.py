@@ -6,7 +6,7 @@ import os
 import shutil
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING, Any, cast
 
 from engine.setup_chat.agent import run_turn
@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from engine.story_sandbox.graph import WriteTurn
     from llm.prompt_logger import PromptLogger
 
+    from api.services.setup_chat_review_feedback import ReviewFeedbackEntry, ReviewKey
     from api.services.token_accountant import TokenAccountant
 
 _REWRITE_SYS = (
@@ -722,6 +723,9 @@ Start the main writer's paragraph-by-paragraph writing cycle: progress/paragraph
             except Exception:  # noqa: BLE001 - Connection failure is not fatal, just discard it
                 pass
         SETUP_CHAT_TURN_QUEUE.clear(nid)
+        from api.services.setup_chat_review_feedback import REVIEW_FEEDBACK
+
+        REVIEW_FEEDBACK.clear_all(nid)
 
     async def reset_all_setup_chat(self) -> None:
         """Close every novel's setup-chat agent connection -- used at process shutdown so no
@@ -862,6 +866,9 @@ Start the main writer's paragraph-by-paragraph writing cycle: progress/paragraph
 
     async def _on_setup_chat_turn_finished(self, novel_id: str) -> None:
         await self._finish_incomplete_image_progress(novel_id)
+        # A review batch may have gone quiet while this turn was running -- flush it into
+        # the queue now (agent just went idle) before draining.
+        await self._maybe_flush_review_feedback(novel_id)
         await self._try_drain_setup_chat_queue(novel_id)
 
     async def begin_image_recognition_progress(
@@ -1060,6 +1067,44 @@ Run a round of setting dialogue: user message will be recorded when entering; en
 
         await self.broadcast({"type": "setup_chat_start", "novel_id": novel_id})
         self._setup_chat_tasks[novel_id] = asyncio.create_task(_run())
+
+    async def report_review_done(
+        self,
+        novel_id: str,
+        pending_key: ReviewKey,
+        entries: Sequence[tuple[ReviewKey, ReviewFeedbackEntry]],
+    ) -> None:
+        """Called by the four background review/derivation modules once a job finishes
+        (replacing their old direct trigger_system_notice_turn call). `entries` empty
+        means the target was deleted while the review was queued / there is nothing to
+        report -- the barrier unit is still released. See
+        docs/superpowers/specs/2026-08-27-setup-chat-review-feedback-barrier-design.md."""
+        from api.services.setup_chat_review_feedback import REVIEW_FEEDBACK
+
+        for buffer_key, entry in entries:
+            REVIEW_FEEDBACK.record(novel_id, buffer_key, entry)
+        REVIEW_FEEDBACK.clear_pending(novel_id, pending_key)
+        REVIEW_FEEDBACK.reset_attempt(novel_id, pending_key)
+        await self._maybe_flush_review_feedback(novel_id)
+
+    async def _maybe_flush_review_feedback(self, novel_id: str) -> None:
+        """Flush the whole batch as one system-notice turn iff (a) no review for this
+        novel is still in flight and (b) the setup-chat agent is idle. Otherwise hold:
+        another report_review_done, or _on_setup_chat_turn_finished, will retry."""
+        from api.services.setup_chat_review_feedback import (
+            REVIEW_FEEDBACK,
+            render_review_feedback,
+        )
+
+        if REVIEW_FEEDBACK.has_pending(novel_id):
+            return
+        entries = REVIEW_FEEDBACK.snapshot(novel_id)
+        if not entries:
+            return
+        if self.is_setup_chat_busy(novel_id):
+            return
+        REVIEW_FEEDBACK.clear_buffer(novel_id)
+        await self.trigger_system_notice_turn(novel_id, render_review_feedback(entries))
 
     async def trigger_system_notice_turn(
         self, novel_id: str, summary_text: str,

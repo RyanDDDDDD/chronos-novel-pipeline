@@ -12,6 +12,12 @@ from __future__ import annotations
 
 import asyncio
 
+from api.services.setup_chat_review_feedback import (
+    REVIEW_FEEDBACK,
+    ReviewFeedbackEntry,
+    ReviewStatus,
+    handle_review_timeout,
+)
 from utils.paths import use_novel
 
 from engine.setup_chat import skeleton_pipeline, skeleton_writer
@@ -68,10 +74,6 @@ def _render_background_summary(
         lines.append(f"已自动修复：{fix_report}")
     if error:
         lines.append(f"（异常：{error}）")
-    if fix_report or error:
-        lines.append(
-            "以上是后台自动审查与修复的结果，仅供你了解情况；不需要、也不要据此再手动调用工具修改。"
-        )
     return "\n".join(lines)
 
 
@@ -174,9 +176,15 @@ async def _run_chapter_review_fix(chapter: int, novel_id: str) -> None:
         await _broadcast_skeleton_event(novel_id, "skeleton_review_done")
 
     summary = _render_background_summary(transitions, stage_reviews, error, fix_report)
+    all_pass = not error and not fix_report and not _collect_failing_feedback(transitions, stage_reviews)
+    status = ReviewStatus.CLEAN if all_pass else ReviewStatus.RESOLVED
+    entry = ReviewFeedbackEntry(
+        "skeleton", f"第{chapter}章骨架", status, "" if status is ReviewStatus.CLEAN else summary)
+
     from api.routes import _hub_instance  # engine-layer callback into hub, see attachment_tool.py
 
-    await _hub_instance().trigger_system_notice_turn(novel_id, summary)
+    await _hub_instance().report_review_done(
+        novel_id, ("skeleton", chapter), [(("skeleton", chapter), entry)])
 
 
 def schedule_chapter_review_fix(chapter: int) -> None:
@@ -188,6 +196,7 @@ def schedule_chapter_review_fix(chapter: int) -> None:
     from utils.paths import active_novel_id
 
     novel_id = active_novel_id()
+    REVIEW_FEEDBACK.mark_pending(novel_id, ("skeleton", chapter))
     name = f"skeleton-chapter-fix:{novel_id}:{chapter}"
     SCHEDULER.schedule_once(
         name, 0.0, lambda: _run_chapter_review_fix(chapter, novel_id), dedup=True,
@@ -196,6 +205,21 @@ def schedule_chapter_review_fix(chapter: int) -> None:
 
 
 async def _on_chapter_review_timeout(novel_id: str, chapter: int) -> None:
-    skeleton_pipeline.clear_review_active(novel_id, chapter)
-    if not skeleton_pipeline.any_review_active(novel_id):
-        await _broadcast_skeleton_event(novel_id, "skeleton_review_done")
+    async def _give_up() -> None:
+        skeleton_pipeline.clear_review_active(novel_id, chapter)
+        if not skeleton_pipeline.any_review_active(novel_id):
+            await _broadcast_skeleton_event(novel_id, "skeleton_review_done")
+
+    def _retry() -> None:
+        from api.services.scheduler import SCHEDULER
+
+        SCHEDULER.schedule_once(
+            f"skeleton-chapter-fix:{novel_id}:{chapter}", 0.0,
+            lambda: _run_chapter_review_fix(chapter, novel_id), dedup=True,
+            on_timeout=lambda: _on_chapter_review_timeout(novel_id, chapter),
+        )
+
+    await handle_review_timeout(
+        novel_id, ("skeleton", chapter), kind="skeleton", label=f"第{chapter}章骨架",
+        retry=_retry, give_up=_give_up,
+    )
