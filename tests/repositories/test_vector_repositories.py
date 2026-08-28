@@ -1,6 +1,6 @@
 import pytest
-from repositories.vector_repositories import ResearchRepository, SandboxVectorMemoryRepository
 from repositories.entities import ResearchChunk, SandboxMemoryHit
+from repositories.vector_repositories import ResearchRepository, SandboxVectorMemoryRepository
 
 
 def test_research_repo_upsert_then_query(monkeypatch, tmp_path):

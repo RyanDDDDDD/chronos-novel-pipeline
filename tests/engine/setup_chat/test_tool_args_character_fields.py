@@ -104,10 +104,11 @@ def test_race_field_description_reads_live_world_bible(tmp_path, monkeypatch):
 
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path / "novels"))
     monkeypatch.setenv("CHRONOS_ACTIVE_NOVEL", "default")
-    (tmp_path / "novels" / "default").mkdir(parents=True)
+    (tmp_path / "novels" / "default").mkdir(parents=True, exist_ok=True)
     (tmp_path / "novels" / "active.json").write_text(
         json.dumps({"active": "default"}), encoding="utf-8",
     )
+    repositories.drop_repositories("default")
     repositories.reset_repositories()
     seed_world({"races": [{"name": "人族", "desc": "凡躯"}, {"name": "精灵", "desc": "长寿"}]})
 

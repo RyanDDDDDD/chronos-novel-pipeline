@@ -157,19 +157,35 @@ def slugify(name: str) -> str:
 
 
 def list_novels() -> list[dict]:
-    """Registry query returns [{id, name, active}], sorted by name."""
+    """Registry query returns [{id, name, active, pinned}]. Pinned novels sort first (most
+    recently pinned on top, via pinned_at DESC); unpinned novels keep the existing name order."""
     active = active_novel_id()
     out: list[dict] = []
     try:
         rows = get_registry_connection().execute(
-            "SELECT id, name FROM novels WHERE deleted_at IS NULL ORDER BY name",
+            "SELECT id, name, pinned_at FROM novels WHERE deleted_at IS NULL "
+            "ORDER BY (pinned_at IS NULL) ASC, pinned_at DESC, name ASC",
         ).fetchall()
         for row in rows:
-            nid, name = str(row[0]), str(row[1])
-            out.append({"id": nid, "name": name or nid, "active": nid == active})
+            nid, name, pinned_at = str(row[0]), str(row[1]), row[2]
+            out.append({"id": nid, "name": name or nid, "active": nid == active, "pinned": pinned_at is not None})
     except Exception:
         pass
     return out
+
+
+def set_novel_pinned(nid: str, pinned: bool) -> None:
+    """Pin/unpin a novel for the sidebar's top-of-list ordering. pinned_at also doubles as the
+    sort key among multiple pinned novels (see list_novels), so pinning an already-pinned novel
+    again refreshes it to the top rather than being a no-op."""
+    if _registry_row(nid) is None:
+        raise ValueError(f"小说不存在: {nid}")
+    conn = get_registry_connection()
+    conn.execute(
+        "UPDATE novels SET pinned_at = ? WHERE id = ?",
+        (_now_iso() if pinned else None, nid),
+    )
+    conn.commit()
 
 
 def set_active(nid: str) -> None:

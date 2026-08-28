@@ -166,7 +166,7 @@ def test_normalize_delta_drops_slider_missing_level_or_text():
 
 def test_persist_archive_writes_file(monkeypatch, tmp_path):
     """_persist_archive must persist via ArchiveRepository (SQLite-backed)."""
-    del monkeypatch, tmp_path
+    _seed_context(monkeypatch, tmp_path)
     import repositories
 
     t._persist_archive("甲", 1, {"name": "甲", "role": "r", "stages": {"1": {}}})

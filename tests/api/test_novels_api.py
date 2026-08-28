@@ -183,6 +183,44 @@ def test_novels_status_includes_skeleton_review_and_timeline_cascade(monkeypatch
     assert body["n2"]["timeline_cascade"] is True
 
 
+def test_patch_novel_pinned_sorts_to_top(monkeypatch, tmp_path):
+    from api.hub import app
+
+    novels_root = tmp_path / "novels"
+    novels_root.mkdir()
+    monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(novels_root))
+    seed_registry_novel(novels_root, "a", "A小说", active=False)
+    seed_registry_novel(novels_root, "b", "B小说", active=True)
+
+    client = TestClient(app)
+    r = client.patch("/api/novels/a", json={"pinned": True})
+    assert r.status_code == 200 and r.json()["ok"] is True
+
+    body = client.get("/api/novels").json()
+    assert [n["id"] for n in body["novels"]] == ["a", "b"]
+    assert body["novels"][0]["pinned"] is True
+
+    r = client.patch("/api/novels/a", json={"pinned": False})
+    assert r.status_code == 200 and r.json()["ok"] is True
+    body = client.get("/api/novels").json()
+    assert [n["id"] for n in body["novels"]] == ["a", "b"]
+    assert all(not n["pinned"] for n in body["novels"])
+
+
+def test_patch_novel_pinned_unknown_returns_400(monkeypatch, tmp_path):
+    from api.hub import app
+
+    novels_root = tmp_path / "novels"
+    novels_root.mkdir()
+    monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(novels_root))
+    seed_registry_novel(novels_root, "default", "默认", active=True)
+
+    client = TestClient(app)
+    r = client.patch("/api/novels/nope", json={"pinned": True})
+    assert r.status_code == 400
+    assert r.json()["ok"] is False
+
+
 def test_novels_status_includes_character_review(monkeypatch, tmp_path):
     import api.hub as hub_mod
     from api.hub import app

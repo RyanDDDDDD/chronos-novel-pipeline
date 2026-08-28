@@ -38,14 +38,16 @@ def _read_prefs_doc() -> dict:
 
 
 def _write_corrupt_prefs_doc(raw: str) -> None:
-    from repositories.sqlite_store import SqliteStore
+    from sqlalchemy import text
+    from repositories.engine import engine_for_novel
 
-    store = SqliteStore("test-novel")
-    store._conn.execute(
-        "INSERT OR REPLACE INTO documents (doc_key, data_json) VALUES (?, ?)",
-        ("author_loop_skill_prefs", raw),
-    )
-    store._conn.commit()
+    engine = engine_for_novel("test-novel")
+    with engine.connect() as conn:
+        conn.execute(
+            text("INSERT OR REPLACE INTO documents (doc_key, data_json) VALUES ('author_loop_skill_prefs', :raw)"),
+            {"raw": raw},
+        )
+        conn.commit()
 
 
 

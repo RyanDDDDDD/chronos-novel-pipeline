@@ -105,17 +105,49 @@ async def _check_tavily_usage(api_key: str) -> dict:
     return {"ok": True, "error": None}
 
 
+async def _check_chronos_cloud_auth(cfg: dict) -> dict:
+    """Free connectivity check for the chronos_cloud provider: a logged-out state is
+    reported directly (zero network cost, and it's the far more common failure mode
+    than the cloud service being unreachable). When logged in, POST /v1/auth/refresh
+    is a real network round-trip but costs no Tavily search credit / DynamoDB usage
+    unit -- it's an AWS Cognito auth call, not a billed search operation, matching the
+    "free" bar Tavily's /usage check sets. A failed refresh also clears the stale local
+    tokens (see cloud_auth.refresh), so the indicator and login-status stay consistent."""
+    from api.services import cloud_auth
+
+    if not cloud_auth.is_logged_in():
+        return {"ok": False, "error": "尚未登录 Chronos 云端账号"}
+    try:
+        await cloud_auth.refresh(cfg)
+    except cloud_auth.CloudAuthError as exc:
+        return {"ok": False, "error": exc.error_code}
+    return {"ok": True, "error": None}
+
+
+def _check_qianfan_key_presence(api_key: str) -> dict | None:
+    """Baidu Qianfan's AI Search product has no free introspection endpoint (confirmed
+    2026-08: only the paid web_search call, no ping/usage API) -- an empty key is a
+    definite failure we can report for free (no network call needed), but a filled-in
+    key's actual validity/reachability still can't be verified without spending a paid
+    call, so that case stays None/"disabled" rather than claiming a false "ok"."""
+    if not api_key:
+        return {"ok": False, "error": "未配置百度千帆 key"}
+    return None
+
+
 async def ping_search_free(cfg: dict) -> dict | None:
-    """Zero-cost connectivity check for automatic paths (startup + every
-    config save). Tavily has a free /usage endpoint that also validates the
-    key, so it's used unconditionally there. Baidu Qianfan's AI Search
-    product has no equivalent free introspection endpoint (confirmed 2026-08:
-    only the paid web_search call and a web-console usage view, no ping/usage
-    API) -- returns None rather than either spending real quota automatically
-    or reporting a fake "ok"; the caller renders None as "disabled"."""
+    """Zero-cost (in the "doesn't spend paid search quota" sense) connectivity check
+    for automatic paths (startup + every config save). Returns None when the provider
+    has no way to be checked for free at all; the caller renders None as "disabled"."""
     from domain.search_provider import SearchProviderKind, search_provider_kind
 
     api_cfg = cfg.get("api") or {}
-    if search_provider_kind(cfg) != SearchProviderKind.TAVILY:
-        return None
-    return await _check_tavily_usage(api_cfg.get("tavily_api_key", ""))
+    kind = search_provider_kind(cfg)
+
+    if kind == SearchProviderKind.TAVILY:
+        return await _check_tavily_usage(api_cfg.get("tavily_api_key", ""))
+    if kind == SearchProviderKind.CHRONOS_CLOUD:
+        return await _check_chronos_cloud_auth(cfg)
+    if kind == SearchProviderKind.BAIDU_QIANFAN:
+        return _check_qianfan_key_presence(api_cfg.get("qianfan_api_key", ""))
+    return None

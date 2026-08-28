@@ -113,11 +113,14 @@ def test_migrate_matches_json_store_and_preserves_json_files(tmp_path, monkeypat
         json_lore = js.list_lore_raw()
         json_plot = js.list_plot_raw()
 
+    import repositories
+    from repositories.sqlite_store import get_connection
+
     ss = SqliteStore(novel_id)
     db_path = str(tmp_path / novel_id / "chronos.sqlite3")
     try:
-        assert ss.list_lore_raw() == json_lore
-        assert ss.list_plot_raw() == json_plot
+        assert repositories.get_lore_repo(novel_id).list_raw() == json_lore
+        assert repositories.get_plot_repo(novel_id).list_raw() == json_plot
         novel_root = tmp_path / novel_id
         for chapter in (1, 2):
             for name in ("甲", "乙"):
@@ -128,8 +131,10 @@ def test_migrate_matches_json_store_and_preserves_json_files(tmp_path, monkeypat
                     / f"{name}_ch{chapter:02d}_archive.json"
                 )
                 expected = json.loads(archive_path.read_text(encoding="utf-8"))
-                actual = ss.get_archive(name, chapter)
-                assert actual == expected
+                actual = repositories.get_archive_repo(novel_id).get(name, chapter)
+                assert actual is not None
+                assert actual.name == expected["name"]
+                assert actual.chapter == expected["chapter"]
 
         assert ss.get_doc("world_bible", "/unused") == {"setting": "test-realm"}
         assert ss.get_doc("story_character_config", "/unused") == {"甲": {"note": "lead"}}
@@ -146,10 +151,14 @@ def test_migrate_matches_json_store_and_preserves_json_files(tmp_path, monkeypat
         assert len(snaps_a) == 1 and snaps_a[0]["delta"] == {"mood": "calm"}
         assert len(snaps_b) == 2
 
-        rows = ss._conn.execute("SELECT id FROM session_messages").fetchall()
-        assert [r[0] for r in rows] == ["u-1"]
-        events = ss._conn.execute("SELECT id FROM sandbox_events").fetchall()
-        assert [r[0] for r in events] == ["e1"]
+        conn = get_connection(db_path)
+        try:
+            rows = conn.execute("SELECT id FROM session_messages").fetchall()
+            assert [r[0] for r in rows] == ["u-1"]
+            events = conn.execute("SELECT id FROM sandbox_events").fetchall()
+            assert [r[0] for r in events] == ["e1"]
+        finally:
+            conn.close()
     finally:
         ss.close()
 

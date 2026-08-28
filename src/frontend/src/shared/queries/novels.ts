@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDispatch } from 'react-redux'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
-import { fetchNovels, createNovel, copyNovel, renameNovel, deleteNovel, type Novel } from '@/shared/utils/novels'
+import { fetchNovels, createNovel, copyNovel, renameNovel, deleteNovel, setNovelPinned, type Novel } from '@/shared/utils/novels'
 import { novelsKey } from '@/shared/queries/keys'
 import { viewFromPathname } from '@/shared/utils/novelRoute'
 import { useToast } from '@/shared/hooks/useToast'
@@ -40,6 +40,7 @@ export function useNovelActions(): {
   copyNovel: (sourceId: string) => Promise<void>
   renameNovel: (targetId: string) => Promise<void>
   deleteNovel: (targetId: string) => Promise<void>
+  togglePinNovel: (targetId: string) => Promise<void>
 } {
   const navigate = useNavigate()
   const location = useLocation()
@@ -104,8 +105,17 @@ export function useNovelActions(): {
     }
   }, [novels, novelId, queryClient, navigate, currentView, toastError, confirm])
 
+  const togglePinNovelAction = useCallback(async (targetId: string) => {
+    const target = novels.find((n) => n.id === targetId)
+    if (!target) return
+    const r = await setNovelPinned(targetId, !target.pinned)
+    if (!r.ok) { toastError(r.error ?? (target.pinned ? '取消置顶失败' : '置顶失败')); return }
+    await queryClient.invalidateQueries({ queryKey: novelsKey })
+  }, [novels, queryClient, toastError])
+
   return {
     createNovel: createNovelAction, copyNovel: copyNovelAction,
     renameNovel: renameNovelAction, deleteNovel: deleteNovelAction,
+    togglePinNovel: togglePinNovelAction,
   }
 }

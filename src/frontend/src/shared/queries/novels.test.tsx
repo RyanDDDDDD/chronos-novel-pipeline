@@ -10,6 +10,7 @@ vi.mock('@/shared/utils/novels', () => ({
   copyNovel: vi.fn(),
   renameNovel: vi.fn(),
   deleteNovel: vi.fn(),
+  setNovelPinned: vi.fn(),
 }))
 
 const promptMock = vi.fn()
@@ -129,6 +130,28 @@ describe('useNovelActions', () => {
     await waitFor(() => expect(result.current).toBeTruthy())
     await act(async () => { await result.current.deleteNovel('') })
     expect(deleteNovel).not.toHaveBeenCalled()
+  })
+
+  it('togglePinNovel flips the target novel current pinned state', async () => {
+    vi.mocked(fetchNovels).mockResolvedValue([{ id: 'a', name: 'A', active: true, pinned: false }])
+    const { setNovelPinned } = await import('@/shared/utils/novels')
+    vi.mocked(setNovelPinned).mockResolvedValue({ ok: true })
+    const { result } = renderHook(
+      () => ({ actions: useNovelActions(), novels: useNovels() }),
+      { wrapper: routerWrapper() },
+    )
+    await waitFor(() => expect(result.current.novels.data?.length).toBe(1))
+    await act(async () => { await result.current.actions.togglePinNovel('a') })
+    expect(setNovelPinned).toHaveBeenCalledWith('a', true)
+  })
+
+  it('togglePinNovel does nothing for an unknown target id', async () => {
+    vi.mocked(fetchNovels).mockResolvedValue([{ id: 'a', name: 'A', active: true, pinned: false }])
+    const { setNovelPinned } = await import('@/shared/utils/novels')
+    const { result } = renderHook(() => useNovelActions(), { wrapper: routerWrapper() })
+    await waitFor(() => expect(result.current).toBeTruthy())
+    await act(async () => { await result.current.togglePinNovel('nope') })
+    expect(setNovelPinned).not.toHaveBeenCalled()
   })
 })
 

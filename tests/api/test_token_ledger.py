@@ -1,17 +1,19 @@
-from pathlib import Path
-
 import api.services.token_ledger as tl
 import pytest
+from sqlalchemy import text
 
 
 @pytest.fixture
 def novel_dir(tmp_path, monkeypatch):
+    import repositories
     nid = "default"
     d = tmp_path / nid
     d.mkdir()
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
     monkeypatch.setenv("CHRONOS_ACTIVE_NOVEL", nid)
-    return d
+    repositories.drop_repositories(nid)
+    yield d
+    repositories.drop_repositories(nid)
 
 
 def test_add_accumulates_within_run(novel_dir):
@@ -41,12 +43,12 @@ def test_load_missing_returns_empty(novel_dir):
 
 
 def test_load_corrupt_returns_empty(novel_dir):
-    from repositories.sqlite_store import SqliteStore
+    from repositories.engine import engine_for_novel
 
-    store = SqliteStore("default")
-    store._conn.execute(
-        "INSERT OR REPLACE INTO documents (doc_key, data_json) VALUES (?, ?)",
-        ("token_ledger", "not json"),
-    )
-    store._conn.commit()
+    engine = engine_for_novel("default")
+    with engine.connect() as conn:
+        conn.execute(
+            text("INSERT OR REPLACE INTO documents (doc_key, data_json) VALUES ('token_ledger', 'not json')")
+        )
+        conn.commit()
     assert tl.load_ledger() == {}
