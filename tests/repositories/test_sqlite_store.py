@@ -3,7 +3,6 @@ import sqlite3
 
 from repositories import get_lore_repo
 from repositories.sqlite_store import (
-    _WRITE_LOCK,
     SqliteStore,
     _character_id,
     _character_name,
@@ -80,7 +79,3 @@ def test_character_id_and_name_helpers(tmp_path, monkeypatch):
         assert _character_name(conn, 99999) is None
     finally:
         conn.close()
-
-
-def test_write_lock_exists():
-    assert _WRITE_LOCK is not None

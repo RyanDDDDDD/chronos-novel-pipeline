@@ -42,3 +42,22 @@ def test_archive_cache_is_per_novel(tmp_path, monkeypatch):
     assert eng.archive_cache_for("b") == {}
     eng.reset_archive_cache("a")
     assert eng.archive_cache_for("a") == {}
+
+
+def test_engine_for_path_is_cached(tmp_path):
+    p = str(tmp_path / "x.sqlite3")
+    assert eng.engine_for_path(p) is eng.engine_for_path(p)
+
+
+def test_engine_for_path_builds_schema(tmp_path):
+    from sqlalchemy import inspect
+
+    e = eng.engine_for_path(str(tmp_path / "y.sqlite3"))
+    assert "vector_chunks" in inspect(e).get_table_names()
+
+
+def test_engine_for_novel_delegates_to_path_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(eng, "_novel_db_path", lambda nid: str(tmp_path / f"{nid}.sqlite3"))
+    by_id = eng.engine_for_novel("n5")
+    by_path = eng.engine_for_path(str(tmp_path / "n5.sqlite3"))
+    assert by_id is by_path

@@ -14,6 +14,7 @@ from sqlmodel import Session, create_engine
 from utils.paths import active_novel_id, novel_db_path
 
 _engines: dict[str, Engine] = {}
+_engines_by_path: dict[str, Engine] = {}
 _registry_engine_cache: list[Engine] = []
 _archive_caches: dict[str, dict[str, dict]] = {}
 _last_touched: dict[str, float] = {}
@@ -43,22 +44,34 @@ def _make_engine(path: str) -> Engine:
     return engine
 
 
-def engine_for_novel(novel_id: str) -> Engine:
-    path = _novel_db_path(novel_id)
+def engine_for_path(db_path: str) -> Engine:
+    """Engine cache keyed by absolute db path -- for callers that hold a path, not a
+    novel_id (SqliteVectorStore). Same migrate-on-first-open contract as engine_for_novel."""
+    abs_path = os.path.abspath(db_path)
     with _lock:
-        engine = _engines.get(novel_id)
-        if engine is not None and str(getattr(engine, "url", "")) != f"sqlite:///{path}":
-            if hasattr(engine, "dispose"):
-                engine.dispose()
-            engine = None
+        engine = _engines_by_path.get(abs_path)
         if engine is None:
             from repositories.migrations import ensure_novel_db_migrated
 
-            ensure_novel_db_migrated(path)
-            engine = _make_engine(path)
-            _engines[novel_id] = engine
-        _last_touched[novel_id] = time.monotonic()
+            ensure_novel_db_migrated(abs_path)
+            engine = _make_engine(abs_path)
+            _engines_by_path[abs_path] = engine
         return engine
+
+
+def engine_for_novel(novel_id: str) -> Engine:
+    abs_path = os.path.abspath(_novel_db_path(novel_id))
+    with _lock:
+        engine = _engines.get(novel_id)
+        if engine is not None and str(getattr(engine, "url", "")) != f"sqlite:///{abs_path}":
+            engine = None  # path changed under this id (test env swap); rebind below
+    if engine is None:
+        engine = engine_for_path(abs_path)
+        with _lock:
+            _engines[novel_id] = engine
+    with _lock:
+        _last_touched[novel_id] = time.monotonic()
+    return engine
 
 
 @contextmanager
@@ -88,14 +101,14 @@ def registry_engine() -> Engine:
 
 
 def dispose_engine(novel_id: str) -> None:
+    abs_path = os.path.abspath(_novel_db_path(novel_id))
     with _lock:
         engine = _engines.pop(novel_id, None)
         _last_touched.pop(novel_id, None)
-    if engine is not None:
-        if hasattr(engine, "dispose"):
-            engine.dispose()
-        elif hasattr(engine, "close"):
-            engine.close()
+        path_engine = _engines_by_path.pop(abs_path, None)
+    for e in (engine, path_engine):
+        if e is not None and hasattr(e, "dispose"):
+            e.dispose()
 
 
 def archive_cache_for(novel_id: str) -> dict[str, dict]:

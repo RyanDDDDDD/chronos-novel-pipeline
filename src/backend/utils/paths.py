@@ -3,7 +3,6 @@ import contextlib
 import contextvars
 import json
 import os
-import sqlite3
 import sys
 
 _DEV_ROOT = os.path.dirname(
@@ -121,14 +120,12 @@ def _active_novel_id() -> str:
     if env:
         return env
     try:
-        from repositories.registry_store import get_registry_connection
+        from repositories.registry_store import active_id
 
-        row = get_registry_connection().execute(
-            "SELECT id FROM novels WHERE is_active = 1 LIMIT 1"
-        ).fetchone()
-        if row and row[0]:
-            return str(row[0])
-    except sqlite3.Error:
+        found = active_id()
+        if found:
+            return str(found)
+    except Exception:  # noqa: BLE001 -- "does not throw": any registry read failure falls back
         pass
     return _DEFAULT_NOVEL_ID
 

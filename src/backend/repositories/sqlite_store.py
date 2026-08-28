@@ -1,13 +1,13 @@
 """Structured storage layer: per-novel SQLite IO + archive memory cache.
 
-DEPRECATED: shim for not-yet-migrated modules (vector store, relationship graph,
-character timeline, session record, chapter shift, etc.), removed in batch 3.
+DEPRECATED: shim for not-yet-migrated modules. Still used by relationship graph,
+session record, chapter shift, event log, novels service, registry store, and
+turn_snapshot's SQLite backup. Shrinks further as batches 3-4 land.
 """
 from __future__ import annotations
 
 import os
 import sqlite3
-import threading
 from typing import Any
 
 from utils.paths import novel_db_path
@@ -19,8 +19,6 @@ from repositories.document_store import (
     save_document_if_version_matches,
 )
 from repositories.engine import dispose_engine, reset_archive_cache
-
-_WRITE_LOCK = threading.Lock()
 
 
 def _character_id(conn: sqlite3.Connection, name: str) -> int | None:
