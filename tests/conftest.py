@@ -43,6 +43,24 @@ def _reset_llm_singleton_caches():
     reset_style_guard_llm_cache()
 
 
+@pytest.fixture(autouse=True)
+def _instant_image_gen_gate(monkeypatch):
+    """Zero every ImageGenGate sleep so portrait tests don't wait the real 3s interval /
+    8-45s 429 backoff. Swaps the whole singleton -- _run_portrait_generation imports
+    IMAGE_GEN_GATE locally on each call, so patching the module attr is enough."""
+    from media.portrait import gate
+
+    monkeypatch.setattr(
+        gate,
+        "IMAGE_GEN_GATE",
+        gate.ImageGenGate(
+            min_interval_s=0.0,
+            rate_limit_backoff_s=(0.0, 0.0, 0.0),
+            transient_backoff_s=0.0,
+        ),
+    )
+
+
 def pytest_sessionstart(session):
     # testmon only attaches `testmon_data` to config when --testmon/--testmon-noselect
     # actually took effect (see testmon/pytest_testmon.py::pytest_configure) -- a plain
