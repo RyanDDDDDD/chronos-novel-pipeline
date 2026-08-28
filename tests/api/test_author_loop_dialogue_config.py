@@ -73,8 +73,10 @@ def test_list_setup_review_hooks_marks_axis_and_enabled(monkeypatch):
 
     monkeypatch.setattr(
         "engine.author_loop.review.review_loader.REVIEW_HOOKS",
-        [_FakeHook("setup_world_completeness", "设定完整度"),
-         _FakeHook("setup_cast_anchors", "角色锚点")],
+        [
+            _FakeHook("setup_world_completeness", "设定完整度"),
+            _FakeHook("setup_world_tension", "冲突张力"),
+        ],
     )
     monkeypatch.setattr(
         "engine.setup_chat.setup_quality_review.SETUP_WORLD_HOOK_NAMES",
@@ -91,7 +93,7 @@ def test_list_setup_review_hooks_marks_axis_and_enabled(monkeypatch):
          "axis": "world", "enabled": True},
     ]
     assert all(h["axis"] == "world" for h in hooks)
-    assert not any(h["name"] == "setup_cast_anchors" for h in hooks)
+    assert not any(h["name"] == "setup_world_tension" for h in hooks)
 
 
 def test_read_state_includes_both_review_hook_lists(monkeypatch):

@@ -10,26 +10,23 @@ from api.services.setup_chat_review_feedback import (
 
 @pytest.fixture(autouse=True)
 def _clean_review_feedback():
-    from engine.setup_chat import character_background_review as cbr
     from engine.setup_chat import timeline_auto as ta
     from engine.setup_chat import world_background_review as wbr
 
     wbr._PENDING.clear()
-    cbr._ACTIVE_CHARACTER_REVIEWS.clear()
     ta._CASCADE_PENDING.clear()
     REVIEW_FEEDBACK.clear_all("n")
     yield
     wbr._PENDING.clear()
-    cbr._ACTIVE_CHARACTER_REVIEWS.clear()
     ta._CASCADE_PENDING.clear()
     REVIEW_FEEDBACK.clear_all("n")
 
 
 @pytest.mark.asyncio
-async def test_all_four_review_jobs_barrier_and_batch_flush(monkeypatch):
-    """Integration test: world, character, skeleton, and timeline review jobs run in parallel.
-    No system notice is triggered until ALL four have finished. Once the final job finishes,
-    MessageHub flushes a single batched notice containing all four results."""
+async def test_world_skeleton_timeline_review_jobs_barrier_and_batch_flush(monkeypatch):
+    """Integration test: world, skeleton, and timeline review jobs run in parallel.
+    No system notice is triggered until ALL three have finished. Once the final job finishes,
+    MessageHub flushes a single batched notice containing all three results."""
     hub = MessageHub()
     notices: list[tuple[str, str]] = []
 
@@ -39,9 +36,8 @@ async def test_all_four_review_jobs_barrier_and_batch_flush(monkeypatch):
     monkeypatch.setattr(hub, "trigger_system_notice_turn", fake_trigger_notice)
     monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
-    # 1. Mark all 4 pending
+    # 1. Mark all 3 pending
     REVIEW_FEEDBACK.mark_pending("n", ("world",))
-    REVIEW_FEEDBACK.mark_pending("n", ("character", "甲"))
     REVIEW_FEEDBACK.mark_pending("n", ("skeleton", 1))
     REVIEW_FEEDBACK.mark_pending("n", ("timeline",))
 
@@ -54,19 +50,13 @@ async def test_all_four_review_jobs_barrier_and_batch_flush(monkeypatch):
     assert REVIEW_FEEDBACK.has_pending("n") is True
     assert len(notices) == 0
 
-    # 3. Complete character review (RESOLVED)
-    char_entry = ReviewFeedbackEntry("character", "角色「甲」", ReviewStatus.RESOLVED, "角色设定微调。")
-    await hub.report_review_done("n", ("character", "甲"), [(("character", "甲"), char_entry)])
-    assert REVIEW_FEEDBACK.has_pending("n") is True
-    assert len(notices) == 0
-
-    # 4. Complete skeleton review (CLEAN)
+    # 3. Complete skeleton review (CLEAN)
     skel_entry = ReviewFeedbackEntry("skeleton", "第1章骨架", ReviewStatus.CLEAN, "")
     await hub.report_review_done("n", ("skeleton", 1), [(("skeleton", 1), skel_entry)])
     assert REVIEW_FEEDBACK.has_pending("n") is True
     assert len(notices) == 0
 
-    # 5. Complete timeline cascade (RESOLVED) -> This releases the barrier!
+    # 4. Complete timeline cascade (RESOLVED) -> This releases the barrier!
     time_entry = ReviewFeedbackEntry("timeline", "角色「甲」时间线", ReviewStatus.RESOLVED, "已重新推演。")
     await hub.report_review_done("n", ("timeline",), [(("timeline", "甲"), time_entry)])
 
@@ -76,10 +66,8 @@ async def test_all_four_review_jobs_barrier_and_batch_flush(monkeypatch):
 
     novel_id, text = notices[0]
     assert novel_id == "n"
-    assert "本轮后台审查共 4 项：" in text
+    assert "本轮后台审查共 3 项：" in text
     assert "【通过，无需调整】世界观、第1章骨架" in text
-    assert "━━ 角色「甲」 ━━" in text
-    assert "角色设定微调。" in text
     assert "━━ 角色「甲」时间线 ━━" in text
     assert "已重新推演。" in text
     assert "以上均为后台自动审查与修复的结果" in text

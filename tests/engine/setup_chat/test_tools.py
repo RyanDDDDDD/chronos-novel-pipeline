@@ -365,10 +365,6 @@ async def test_add_character_core_schedules_visual_tags_extraction(monkeypatch, 
     monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
     monkeypatch.setattr("engine.setup_chat.tools.validate_character_edit", lambda char, roster, **_kw: [])
     monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.schedule_character_quality_review",
-        lambda name, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         "engine.modes.author_loop_skill_prefs.load_dialogue_prefs",
         lambda: {"auto_build_character_count": 5},
     )
@@ -423,10 +419,6 @@ async def test_edit_character_core_reextracts_when_physique_changes(monkeypatch)
 
     monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
     monkeypatch.setattr("engine.setup_chat.tools.validate_character_edit", lambda char, roster, **_kw: [])
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.schedule_character_quality_review",
-        lambda name, **_kwargs: None,
-    )
     monkeypatch.setattr(
         "engine.archive.archive_view.delete_character_archives",
         lambda name: {"removed_stages": 0, "deleted_chapters": []},
@@ -488,10 +480,6 @@ async def test_edit_character_core_keeps_cache_when_appearance_unchanged(monkeyp
 
     monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
     monkeypatch.setattr("engine.setup_chat.tools.validate_character_edit", lambda char, roster, **_kw: [])
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.schedule_character_quality_review",
-        lambda name, **_kwargs: None,
-    )
     monkeypatch.setattr(
         "engine.archive.archive_view.delete_character_archives",
         lambda name: {"removed_stages": 0, "deleted_chapters": []},
@@ -556,10 +544,6 @@ async def test_edit_character_core_applies_manual_visual_tags_override(monkeypat
 
     monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
     monkeypatch.setattr("engine.setup_chat.tools.validate_character_edit", lambda char, roster, **_kw: [])
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.schedule_character_quality_review",
-        lambda name, **_kwargs: None,
-    )
     monkeypatch.setattr(
         "engine.archive.archive_view.delete_character_archives",
         lambda name: {"removed_stages": 0, "deleted_chapters": []},
@@ -627,10 +611,6 @@ async def test_edit_character_core_appearance_change_still_reextracts_over_manua
 
     monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
     monkeypatch.setattr("engine.setup_chat.tools.validate_character_edit", lambda char, roster, **_kw: [])
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.schedule_character_quality_review",
-        lambda name, **_kwargs: None,
-    )
     monkeypatch.setattr(
         "engine.archive.archive_view.delete_character_archives",
         lambda name: {"removed_stages": 0, "deleted_chapters": []},

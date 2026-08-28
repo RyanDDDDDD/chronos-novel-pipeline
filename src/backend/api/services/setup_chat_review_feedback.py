@@ -31,7 +31,7 @@ class ReviewStatus(StrEnum):
 @dataclass(frozen=True)
 class ReviewFeedbackEntry:
     kind: str              # "world" | "skeleton" | "timeline"
-    label: str             # chat-facing zh label: 世界观 / 角色「甲」 / 第3章骨架 / 角色「甲」时间线
+    label: str             # chat-facing zh label: 世界观 / 第3章骨架 / 角色「甲」时间线
     status: ReviewStatus
     body: str = ""         # structured facts for the chat agent; "" when CLEAN
 

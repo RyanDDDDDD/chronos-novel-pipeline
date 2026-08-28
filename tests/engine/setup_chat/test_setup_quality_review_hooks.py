@@ -75,57 +75,6 @@ def test_completeness_parse_clamps_score_0_100():
     assert hook.parse('{"score": -5, "feedback": ""}').score == 0
 
 
-def _cast_ctx(char: dict, **kwargs: object) -> ReviewContext:
-    return ReviewContext(
-        beat_intent="",
-        base_draft="",
-        refined="",
-        prev_beat_text=None,
-        directive="",
-        character_card=str(kwargs.get("character_card", "测试角色卡")),
-        character=char,
-        world_text=str(kwargs.get("world_text", "测试世界观")),
-    )
-
-
-def test_anchors_too_few_fails_precheck():
-    char = {"causal_anchors": {"创伤": "abc"}}
-    r = _hook("setup_cast_anchors").evaluate(_cast_ctx(char))
-    assert r is not None and r.score < 60
-
-
-def test_anchors_too_short_fails_precheck():
-    char = {
-        "causal_anchors": {
-            "创伤": "这是一段足够长的创伤锚点描述文字",
-            "执念": "太短",
-        }
-    }
-    r = _hook("setup_cast_anchors").evaluate(_cast_ctx(char))
-    assert r is not None
-    assert r.score == 40
-    assert "执念" in r.feedback
-
-
-def test_vividness_too_few_slots_fails_precheck():
-    char = {"physique": {"face": "这是一段足够长的面部描写内容", "hair": "短"}}
-    r = _hook("setup_cast_vividness").evaluate(_cast_ctx(char))
-    assert r is not None and r.score == 45
-
-
-def test_signature_no_marks_fails_precheck():
-    char = {
-        "verbal_tic": "",
-        "hobbies": [],
-        "clothing_dna": {
-            "color_palette": ["黑"],
-            "materials_preference": [],
-        },
-    }
-    r = _hook("setup_cast_signature").evaluate(_cast_ctx(char))
-    assert r is not None and r.score == 50
-
-
 def test_all_setup_review_hooks_discoverable():
     from engine.author_loop.review.review_loader import REVIEW_HOOKS
 
@@ -134,9 +83,5 @@ def test_all_setup_review_hooks_discoverable():
         "setup_world_completeness",
         "setup_world_tension",
         "setup_world_distinctiveness",
-        "setup_cast_anchors",
-        "setup_cast_contradiction",
-        "setup_cast_vividness",
-        "setup_cast_signature",
     }
     assert expected <= names

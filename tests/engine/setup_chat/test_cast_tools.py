@@ -46,21 +46,11 @@ def _no_relationship_inference(monkeypatch):
     )
 
 
-@pytest.fixture(autouse=True)
-def _no_character_review_scheduling(monkeypatch):
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.schedule_character_quality_review",
-        lambda name, **_kwargs: None,
-    )
-
-
 def _prefs(**overrides: object) -> dict:
     from engine.setup_chat import setup_quality_review as sqr
 
     prefs: dict = {
-        "disabled_setup_review_hooks": list(
-            sqr.SETUP_WORLD_HOOK_NAMES + sqr.SETUP_CAST_HOOK_NAMES
-        ),
+        "disabled_setup_review_hooks": list(sqr.SETUP_WORLD_HOOK_NAMES),
     }
     prefs.update(overrides)
     return prefs
@@ -785,36 +775,28 @@ def test_agent_registers_delete_tools():
 
 
 @pytest.mark.asyncio
-async def test_add_character_persists_and_schedules_review_even_though_review_not_run_inline(
-    monkeypatch, tmp_path,
-):
-    """Write-first: add_character no longer calls gate_character inline, and always
-    schedules the background review after a successful write."""
+async def test_add_character_persists_without_inline_quality_gate(monkeypatch, tmp_path):
+    """Write-first: add_character persists immediately with no inline quality gate."""
     seed_lore([_full_char("甲")])
-    scheduled = []
     monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.schedule_character_quality_review",
-        lambda name, **_kwargs: scheduled.append(name),
+        "engine.setup_chat.character_visual_tags.schedule_extract_visual_tags",
+        lambda name: None,
     )
 
     out = await add_character.ainvoke(_args("乙"))
 
     assert "已添加" in out and "乙" in out
-    assert scheduled == ["乙"]
+    assert any(c.get("name") == "乙" for c in lore_raw())
+    del tmp_path
 
 
 @pytest.mark.asyncio
-async def test_edit_character_persists_and_schedules_review_under_new_name(monkeypatch, tmp_path):
+async def test_edit_character_persists_under_new_name(monkeypatch, tmp_path):
     from engine.setup_chat.tools import _edit_character_core
 
     seed_lore([_full_char("甲")])
     monkeypatch.setattr(
         "engine.setup_chat.timeline_auto.schedule_timeline_cascade", lambda *a, **k: None,
-    )
-    scheduled = []
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.schedule_character_quality_review",
-        lambda name, **_kwargs: scheduled.append(name),
     )
 
     args = _args("甲")
@@ -822,27 +804,5 @@ async def test_edit_character_persists_and_schedules_review_under_new_name(monke
     ok, msg, char = await _edit_character_core(name="甲", **args)
 
     assert ok is True and char is not None
-    assert scheduled == ["甲改名"]  # schedules review under the NEW identity
     assert any(c.get("name") == "甲改名" for c in lore_raw())
     del tmp_path, msg
-
-
-@pytest.mark.asyncio
-async def test_edit_character_no_longer_calls_gate_character(monkeypatch, tmp_path):
-    """Regression: the old synchronous reject-on-review-fail path must be gone."""
-    from engine.setup_chat import setup_quality_review as sqr
-    from engine.setup_chat.tools import _edit_character_core
-
-    seed_lore([_full_char("甲")])
-    monkeypatch.setattr(
-        "engine.setup_chat.timeline_auto.schedule_timeline_cascade", lambda *a, **k: None,
-    )
-
-    async def fail_if_called(*a, **k):
-        raise AssertionError("gate_character must not be called from the interactive edit path")
-
-    monkeypatch.setattr(sqr, "gate_character", fail_if_called)
-
-    args = _args("甲")
-    ok, msg, char = await _edit_character_core(name="甲", **args)
-    assert ok is True
