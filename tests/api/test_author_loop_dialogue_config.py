@@ -80,22 +80,18 @@ def test_list_setup_review_hooks_marks_axis_and_enabled(monkeypatch):
         "engine.setup_chat.setup_quality_review.SETUP_WORLD_HOOK_NAMES",
         ("setup_world_completeness",),
     )
-    monkeypatch.setattr(
-        "engine.setup_chat.setup_quality_review.SETUP_CAST_HOOK_NAMES",
-        ("setup_cast_anchors",),
-    )
     monkeypatch.setattr(cfg, "load_dialogue_prefs",
                         lambda: {"target_words": 3000,
                                  "disabled_buildtime_review_hooks": [],
                                  "disabled_runtime_review_hooks": [],
-                                 "disabled_setup_review_hooks": ["setup_cast_anchors"]})
+                                 "disabled_setup_review_hooks": []})
     hooks = cfg._list_setup_review_hooks()
     assert hooks == [
         {"name": "setup_world_completeness", "display_name": "设定完整度",
          "axis": "world", "enabled": True},
-        {"name": "setup_cast_anchors", "display_name": "角色锚点",
-         "axis": "cast", "enabled": False},
     ]
+    assert all(h["axis"] == "world" for h in hooks)
+    assert not any(h["name"] == "setup_cast_anchors" for h in hooks)
 
 
 def test_read_state_includes_both_review_hook_lists(monkeypatch):
@@ -133,7 +129,8 @@ def test_read_state_includes_setup_review_hooks(monkeypatch, tmp_path):
     data = resp.json()
     names = {h["name"] for h in data["setup_review_hooks"]}
     assert "setup_world_completeness" in names
-    assert len(names) == 7
+    assert all(h["axis"] == "world" for h in data["setup_review_hooks"])
+    assert len(names) == 3
 
 
 def test_dialogue_config_isolated_per_novel(monkeypatch, tmp_path):

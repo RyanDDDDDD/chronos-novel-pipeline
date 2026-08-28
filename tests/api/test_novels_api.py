@@ -221,10 +221,9 @@ def test_patch_novel_pinned_unknown_returns_400(monkeypatch, tmp_path):
     assert r.json()["ok"] is False
 
 
-def test_novels_status_includes_character_review(monkeypatch, tmp_path):
+def test_novels_status_omits_character_review(monkeypatch, tmp_path):
     import api.hub as hub_mod
     from api.hub import app
-    from engine.setup_chat import character_background_review as cbr
 
     novels_root = tmp_path / "novels"
     novels_root.mkdir()
@@ -238,12 +237,15 @@ def test_novels_status_includes_character_review(monkeypatch, tmp_path):
     monkeypatch.setattr(hub, "is_story_sandbox_busy", lambda nid: False)
     monkeypatch.setattr("engine.setup_chat.skeleton_pipeline.any_review_active", lambda nid: False)
     monkeypatch.setattr("engine.setup_chat.timeline_auto.is_cascade_active", lambda nid: False)
-    monkeypatch.setattr("engine.setup_chat.world_background_review.is_world_review_active", lambda nid: False)
+    monkeypatch.setattr(
+        "engine.setup_chat.world_background_review.is_world_review_active",
+        lambda nid: True,
+    )
 
-    cbr.mark_review_active("novel-A", "甲")
-    try:
-        client = TestClient(app)
-        resp = client.get("/api/novels/status")
-        assert resp.json()["novel-A"]["character_review"] is True
-    finally:
-        cbr.clear_review_active("novel-A", "甲")
+    client = TestClient(app)
+    resp = client.get("/api/novels/status")
+    status = resp.json()["novel-A"]
+    assert "character_review" not in status
+    assert status["world_review"] is True
+    assert status["skeleton_review"] is False
+    assert status["timeline_cascade"] is False

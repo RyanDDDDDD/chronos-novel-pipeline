@@ -29,21 +29,21 @@ def _list_buildtime_review_hooks() -> list[dict]:
 
 
 def _list_setup_review_hooks() -> list[dict]:
-    """Setup quality gate axis (world bible + character cards before persist)."""
+    """Setup quality gate axis (world bible before persist)."""
     from engine.author_loop.review.review_loader import REVIEW_HOOKS
-    from engine.setup_chat.setup_quality_review import SETUP_CAST_HOOK_NAMES, SETUP_WORLD_HOOK_NAMES
+    from engine.setup_chat.setup_quality_review import SETUP_WORLD_HOOK_NAMES
 
     disabled = set(load_dialogue_prefs().get("disabled_setup_review_hooks", []))
     by_name = {h.name: h for h in REVIEW_HOOKS}
     out: list[dict] = []
-    for name in (*SETUP_WORLD_HOOK_NAMES, *SETUP_CAST_HOOK_NAMES):
+    for name in SETUP_WORLD_HOOK_NAMES:
         hook = by_name.get(name)
         if hook is None:
             continue
         out.append({
             "name": name,
             "display_name": hook.display_name,
-            "axis": "world" if name in SETUP_WORLD_HOOK_NAMES else "cast",
+            "axis": "world",
             "enabled": name not in disabled,
         })
     return out

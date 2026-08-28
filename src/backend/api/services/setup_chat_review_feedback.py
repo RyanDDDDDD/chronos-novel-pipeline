@@ -1,7 +1,7 @@
 """Per-novel buffer that batches setup-chat background-review results.
 
-The four background review/derivation jobs -- world_background_review,
-character_background_review, skeleton_background_review, timeline_auto -- used to each
+The background review/derivation jobs -- world_background_review,
+skeleton_background_review, timeline_auto -- used to each
 call MessageHub.trigger_system_notice_turn independently the moment they finished,
 producing one chat-agent turn per job. This buffer instead collects their results
 keyed by review target, so MessageHub can wait until a novel has NO review still
@@ -17,7 +17,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
-# ("world",) / ("character", name) / ("skeleton", chapter) / ("timeline",) / ("timeline", name).
+# ("world",) / ("skeleton", chapter) / ("timeline",) / ("timeline", name).
 # Elements mix str and int, so the alias stays a bare tuple.
 ReviewKey = tuple[object, ...]
 
@@ -30,7 +30,7 @@ class ReviewStatus(StrEnum):
 
 @dataclass(frozen=True)
 class ReviewFeedbackEntry:
-    kind: str              # "world" | "character" | "skeleton" | "timeline"
+    kind: str              # "world" | "skeleton" | "timeline"
     label: str             # chat-facing zh label: 世界观 / 角色「甲」 / 第3章骨架 / 角色「甲」时间线
     status: ReviewStatus
     body: str = ""         # structured facts for the chat agent; "" when CLEAN
