@@ -8,8 +8,7 @@ import os
 import time
 import uuid
 
-from repositories.sqlite_store import SqliteStore, get_connection
-from utils.paths import novel_dir
+from repositories.sqlite_store import SqliteStore
 
 _MSG_FILE = "messages.json"
 
@@ -33,9 +32,11 @@ def _session_initialized(session_dir: str) -> bool:
     return isinstance(flag, dict) and bool(flag.get("initialized"))
 
 
-def _db_conn(session_dir: str):
-    nid = _novel_id_from_session_dir(session_dir)
-    return get_connection(os.path.join(novel_dir(nid), "chronos.sqlite3"))
+def _session(session_dir: str):  # noqa: ANN201 -- sqlmodel.Session
+    from repositories.engine import engine_for_novel
+    from sqlmodel import Session
+
+    return Session(engine_for_novel(_novel_id_from_session_dir(session_dir)))
 
 
 def _encode_content(rec: dict) -> str:
@@ -65,11 +66,16 @@ def _row_to_message(row: tuple) -> dict:
 
 
 def load_messages(session_dir: str) -> list[dict]:
-    conn = _db_conn(session_dir)
-    rows = conn.execute(
-        "SELECT id, role, content, seq, ts FROM session_messages ORDER BY seq",
-    ).fetchall()
-    return [_row_to_message(row) for row in rows]
+    from repositories.models import SessionMessage
+    from sqlmodel import col, select
+
+    with _session(session_dir) as s:
+        rows = s.exec(
+            select(SessionMessage).order_by(col(SessionMessage.seq))
+        ).all()
+    return [
+        _row_to_message((m.id, m.role, m.content, m.seq, m.ts)) for m in rows
+    ]
 
 
 def clear_messages(session_dir: str) -> None:
@@ -77,16 +83,20 @@ def clear_messages(session_dir: str) -> None:
     the session_initialized flag untouched -- _session_initialized falls through to
     load_messages() either way, which is now empty, so a stale True flag doesn't resurrect
     anything."""
-    conn = _db_conn(session_dir)
-    conn.execute("DELETE FROM session_messages")
-    conn.commit()
+    from repositories.models import SessionMessage
+    from sqlalchemy import delete
+
+    with _session(session_dir) as s:
+        s.exec(delete(SessionMessage))
+        s.commit()
 
 
 def _save(session_dir: str, messages: list[dict]) -> None:
-    conn = _db_conn(session_dir)
-    conn.execute("BEGIN")
-    try:
-        conn.execute("DELETE FROM session_messages")
+    from repositories.models import SessionMessage
+    from sqlalchemy import delete
+
+    with _session(session_dir) as s:
+        s.exec(delete(SessionMessage))
         for rec in messages:
             if not isinstance(rec, dict):
                 continue
@@ -94,20 +104,14 @@ def _save(session_dir: str, messages: list[dict]) -> None:
             role = rec.get("role")
             if not msg_id or not role:
                 continue
-            conn.execute(
-                "INSERT INTO session_messages (id, role, content, seq, ts) VALUES (?, ?, ?, ?, ?)",
-                (
-                    str(msg_id),
-                    str(role),
-                    _encode_content(rec),
-                    int(rec.get("seq", 0)),
-                    int(rec.get("ts", 0)),
-                ),
-            )
-        conn.commit()
-    except BaseException:
-        conn.rollback()
-        raise
+            s.add(SessionMessage(
+                id=str(msg_id),
+                role=str(role),
+                content=_encode_content(rec),
+                seq=int(rec.get("seq", 0)),
+                ts=int(rec.get("ts", 0)),
+            ))
+        s.commit()
     SqliteStore(_novel_id_from_session_dir(session_dir)).save_doc(
         "session_initialized", "", {"initialized": True},
     )

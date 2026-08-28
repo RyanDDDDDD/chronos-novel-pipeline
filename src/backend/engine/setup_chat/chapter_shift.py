@@ -7,9 +7,12 @@ inventory and the reasoning behind each store's specific handling (bare UPDATE v
 read-modify-write vs. cache-evict vs. clear-not-migrate)."""
 from __future__ import annotations
 
-import json
 import os
-import sqlite3
+
+from repositories.engine import engine_for_novel
+from repositories.models import CharacterArchive, PlotChapter, SandboxEvent, TimelineSnapshot
+from sqlalchemy import delete, func, update
+from sqlmodel import Session, col, select
 
 
 class ChapterBusyError(Exception):
@@ -19,10 +22,10 @@ class ChapterBusyError(Exception):
     that's the safe direction to err in for an irreversible renumbering operation."""
 
 
-def _conn() -> sqlite3.Connection:
-    from repositories.sqlite_store import get_connection
-    from utils.paths import active_novel_id, novel_db_path
-    return get_connection(novel_db_path(active_novel_id()))
+def _session() -> Session:
+    from utils.paths import active_novel_id
+
+    return Session(engine_for_novel(active_novel_id()))
 
 
 def _shift_order(from_chapter: int, delta: int, max_chapter: int) -> list[int]:
@@ -43,39 +46,38 @@ def _assert_not_busy(chapters: list[int]) -> None:
         )
 
 
-def _shift_plot_chapters_row(conn: sqlite3.Connection, k: int, delta: int) -> None:
-    row = conn.execute(
-        "SELECT data_json, seq FROM plot_chapters WHERE chapter = ?", (k,),
-    ).fetchone()
+def _shift_one_chapter(s: Session, k: int, delta: int) -> None:
+    """Move chapter k's identity to k+delta across plot_chapters + its FK children, in an
+    order that never leaves a dangling foreign key (so no PRAGMA defer_foreign_keys needed):
+    insert the destination plot_chapters row first, re-point the children, then drop the
+    source row. `order` in shift_chapters guarantees k+delta is free when we get here.
+    character_archives is not touched here -- shift_chapters bulk-deletes every archive in
+    range up front, before this loop, so nothing here references a chapter about to vanish."""
+    row = s.get(PlotChapter, k)
     if row is None:
         return
-    data_json, seq = row
-    data = json.loads(data_json)
+    data = dict(row.data_json)
     data["chapter"] = k + delta
-    conn.execute("DELETE FROM plot_chapters WHERE chapter = ?", (k,))
-    conn.execute(
-        "INSERT INTO plot_chapters (chapter, data_json, seq) VALUES (?, ?, ?)",
-        (k + delta, json.dumps(data, ensure_ascii=False), seq),
+    s.add(PlotChapter(chapter=k + delta, data_json=data, seq=row.seq))
+    s.flush()
+
+    # timeline_snapshots.delta_json holds only delta content, never the chapter number --
+    # a bare column UPDATE (FK now satisfied by the row inserted above).
+    s.exec(
+        update(TimelineSnapshot)
+        .where(col(TimelineSnapshot.chapter) == k)
+        .values(chapter=k + delta)
     )
-
-
-def _shift_sandbox_events_rows(conn: sqlite3.Connection, k: int, delta: int) -> None:
-    rows = conn.execute(
-        "SELECT id, entry_json FROM sandbox_events WHERE chapter = ?", (k,),
-    ).fetchall()
-    for eid, entry_json in rows:
-        entry = json.loads(entry_json)
+    # sandbox_events has no FK; move the row and rewrite its embedded chapter number.
+    for ev in s.exec(select(SandboxEvent).where(col(SandboxEvent.chapter) == k)).all():
+        entry = dict(ev.entry_json)
         entry["chapter"] = k + delta
-        conn.execute(
-            "UPDATE sandbox_events SET chapter = ?, entry_json = ? WHERE id = ?",
-            (k + delta, json.dumps(entry, ensure_ascii=False), eid),
-        )
+        ev.entry_json = entry
+        ev.chapter = k + delta
+    s.flush()
 
-
-def _shift_timeline_snapshots_rows(conn: sqlite3.Connection, k: int, delta: int) -> None:
-    # delta_json holds only the delta content (sliders/personality/etc), never the chapter
-    # number itself -- a bare column UPDATE is safe here, unlike plot_chapters/sandbox_events.
-    conn.execute("UPDATE timeline_snapshots SET chapter = ? WHERE chapter = ?", (k + delta, k))
+    s.delete(row)
+    s.flush()
 
 
 def _shift_disk_dir(k: int, delta: int) -> None:
@@ -130,29 +132,25 @@ async def shift_chapters(from_chapter: int, delta: int) -> None:
     from_chapter. Zero LLM calls -- purely mechanical."""
     if delta not in (1, -1):
         raise ValueError("delta 只能是 +1 或 -1")
-    conn = _conn()
-    max_row = conn.execute("SELECT MAX(chapter) FROM plot_chapters").fetchone()
-    max_chapter = max_row[0] if max_row else None
-    if max_chapter is None or from_chapter > max_chapter:
-        return
 
-    order = _shift_order(from_chapter, delta, max_chapter)
-    _assert_not_busy(order)
-    branch_ids_by_k = {k: _sandbox_branch_ids_for(k) for k in order}
+    with _session() as s:
+        max_chapter = s.exec(select(func.max(col(PlotChapter.chapter)))).one()
+        if max_chapter is None or from_chapter > max_chapter:
+            return
 
-    conn.execute("PRAGMA defer_foreign_keys = ON")
-    conn.execute("BEGIN")
-    try:
-        for k in order:
-            _shift_plot_chapters_row(conn, k, delta)
-            _shift_sandbox_events_rows(conn, k, delta)
-            _shift_timeline_snapshots_rows(conn, k, delta)
+        order = _shift_order(from_chapter, delta, max_chapter)
+        _assert_not_busy(order)
+        branch_ids_by_k = {k: _sandbox_branch_ids_for(k) for k in order}
+
+        # Drop every in-range archive first -- they FK-reference plot_chapters.chapter and are
+        # discarded by the shift anyway, so clearing them up front lets each _shift_one_chapter
+        # delete its source plot row without a dangling reference.
         evict_from = min(from_chapter, from_chapter + delta)
-        conn.execute("DELETE FROM character_archives WHERE chapter >= ?", (evict_from,))
-        conn.commit()
-    except BaseException:
-        conn.rollback()
-        raise
+        s.exec(delete(CharacterArchive).where(col(CharacterArchive.chapter) >= evict_from))
+        s.flush()
+        for k in order:
+            _shift_one_chapter(s, k, delta)
+        s.commit()
 
     # Filesystem + checkpoint cleanup happen after the DB commit succeeds -- if either of these
     # fails partway, the DB is already in its correct final state (nothing to roll back to) and

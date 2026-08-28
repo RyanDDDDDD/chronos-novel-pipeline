@@ -7,9 +7,7 @@ staleness gap the batch design had -- see that function's docstring)."""
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import os
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
@@ -17,8 +15,8 @@ from typing import Any, Protocol
 
 from repositories import get_sandbox_vector_memory_repo
 from repositories.entities import MemoryOrigin
-from repositories.sqlite_store import SqliteStore, get_connection
-from utils.paths import active_novel_id, novel_dir
+from repositories.sqlite_store import SqliteStore
+from utils.paths import active_novel_id
 
 from engine.story_sandbox.state import Round, SandboxState
 from engine.story_sandbox.summary_fold import CallLLM, EventResult
@@ -43,45 +41,38 @@ def _store() -> SqliteStore:
     return SqliteStore(active_novel_id())
 
 
-def _conn():
-    return get_connection(os.path.join(novel_dir(active_novel_id()), "chronos.sqlite3"))
-
-
 def _load_entries_from_db() -> list[dict]:
-    rows = _conn().execute(
-        "SELECT entry_json FROM sandbox_events ORDER BY chapter, turn_index",
-    ).fetchall()
-    entries: list[dict] = []
-    for (entry_json,) in rows:
-        try:
-            entry = json.loads(entry_json)
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if isinstance(entry, dict):
-            entries.append(entry)
-    return entries
+    from repositories.engine import session_for
+    from repositories.models import SandboxEvent
+    from sqlmodel import col, select
+
+    with session_for() as s:
+        rows = s.exec(
+            select(SandboxEvent.entry_json)
+            .order_by(col(SandboxEvent.chapter), col(SandboxEvent.turn_index))
+        ).all()
+    return [dict(r) for r in rows if isinstance(r, dict)]
 
 
 def _save_entries_to_db(entries: list[dict]) -> None:
-    conn = _conn()
-    conn.execute("BEGIN")
-    try:
-        conn.execute("DELETE FROM sandbox_events")
+    from repositories.engine import engine_for_novel
+    from repositories.models import SandboxEvent
+    from sqlalchemy import delete
+    from sqlmodel import Session
+
+    with Session(engine_for_novel(active_novel_id())) as s:
+        s.exec(delete(SandboxEvent))
         for entry in entries:
             entry_id = entry.get("id")
             if not entry_id:
                 continue
-            chapter = int(entry.get("chapter", 0))
-            turn_index = int(entry.get("turn_index", 0))
-            conn.execute(
-                "INSERT INTO sandbox_events (id, chapter, turn_index, entry_json)"
-                " VALUES (?, ?, ?, ?)",
-                (str(entry_id), chapter, turn_index, json.dumps(entry, ensure_ascii=False)),
-            )
-        conn.commit()
-    except BaseException:
-        conn.rollback()
-        raise
+            s.add(SandboxEvent(
+                id=str(entry_id),
+                chapter=int(entry.get("chapter", 0)),
+                turn_index=int(entry.get("turn_index", 0)),
+                entry_json=entry,
+            ))
+        s.commit()
 
 
 def load_event_log() -> dict:
