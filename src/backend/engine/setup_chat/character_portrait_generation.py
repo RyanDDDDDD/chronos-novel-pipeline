@@ -7,15 +7,16 @@ this cache, or an edit that changed appearance fields before the extraction job 
 from __future__ import annotations
 
 from loguru import logger
-from media.portrait.novita_provider import NovitaImageProvider
 from media.portrait.prompt_builder import build_portrait_prompt
+from media.portrait.provider_factory import build_image_provider
 from media.portrait.service import store_portrait
 from utils.paths import use_novel
 
-# 1 initial attempt + 3 retries -- Novita's async task occasionally fails transiently
-# ("failed to exec task" with no further detail), so a single shot was too eager to
-# surface an error the user could dodge just by clicking "regenerate" again.
-_MAX_GENERATE_ATTEMPTS = 4
+# 1 initial attempt + 2 retries -- the cloud task occasionally fails transiently
+# (Novita "failed to exec task", NovelAI transient 5xx); a single shot was too eager to
+# surface an error the user could dodge by clicking "regenerate" again. Kept low so a hard
+# failure (e.g. NovelAI 402: no subscription / out of Anlas) surfaces to the user fast.
+_MAX_GENERATE_ATTEMPTS = 3
 
 
 def _resolve_image_gen_entry(novel_id: str) -> dict | None:
@@ -75,7 +76,7 @@ async def _run_portrait_generation(novel_id: str, name: str) -> None:
                 tags = await extract_and_persist_visual_tags(novel_id, name, char)
 
             prompt, negative_prompt = build_portrait_prompt(tags, entry.get("base_model"))
-            provider = NovitaImageProvider(api_key=entry["api_key"], model=entry.get("model", ""))
+            provider = build_image_provider(entry)
 
             last_error: Exception | None = None
             image_bytes: bytes | None = None

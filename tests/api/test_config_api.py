@@ -114,3 +114,78 @@ def test_put_config_skips_novita_refresh_when_image_gen_key_unchanged(monkeypatc
 
     assert r.status_code == 200
     assert "novita_model_catalog_refresh" not in scheduled
+
+
+def test_put_config_skips_novita_refresh_for_novelai_image_gen_entry(monkeypatch):
+    """Saving a new `service="novelai"` image_gen entry must not schedule a Novita catalog
+    refresh -- NovelAI has no equivalent catalog to pull."""
+    import api.hub as hub_mod
+    import api.services.service_ping_status as ping_mod
+    import llm.factory as factory
+    import utils.config as config_mod
+    from api.hub import app
+    from api.services.scheduler import SCHEDULER
+
+    hub = MessageHub()
+    monkeypatch.setattr(hub_mod, "HUB", hub)
+    monkeypatch.setattr(hub, "reset_setup_chat", lambda: _noop_coro())
+    monkeypatch.setattr(factory, "reset_cloud_llm_cache", lambda: None)
+    monkeypatch.setattr(ping_mod, "run_config_save_pings", lambda cfg: _noop_coro())
+
+    monkeypatch.setattr(config_mod, "get_config", lambda: {"llm": {"custom_models": []}})
+    new_cfg = {"llm": {"custom_models": [
+        {"id": "img-1", "provider": "image_gen", "api_key": "novelai-key", "service": "novelai"},
+    ]}, "api": {}}
+    monkeypatch.setattr(config_mod, "save_config", lambda raw: new_cfg)
+
+    scheduled = []
+    monkeypatch.setattr(
+        SCHEDULER, "schedule_once",
+        lambda name, delay_s, coro, **kw: scheduled.append(name),
+    )
+
+    client = TestClient(app)
+    r = client.put("/api/config", json={"config": {"llm": {}, "api": {}}})
+
+    assert r.status_code == 200
+    assert "novita_model_catalog_refresh" not in scheduled
+
+
+def test_put_config_schedules_novita_refresh_for_explicit_novita_entry(monkeypatch):
+    """An explicit `service="novita"` entry with a changed key keeps scheduling the
+    refresh, same as a legacy entry with no `service` field."""
+    import api.hub as hub_mod
+    import api.services.service_ping_status as ping_mod
+    import llm.factory as factory
+    import utils.config as config_mod
+    from api.hub import app
+    from api.services.scheduler import SCHEDULER
+
+    hub = MessageHub()
+    monkeypatch.setattr(hub_mod, "HUB", hub)
+    monkeypatch.setattr(hub, "reset_setup_chat", lambda: _noop_coro())
+    monkeypatch.setattr(factory, "reset_cloud_llm_cache", lambda: None)
+    monkeypatch.setattr(ping_mod, "run_config_save_pings", lambda cfg: _noop_coro())
+
+    monkeypatch.setattr(
+        config_mod, "get_config",
+        lambda: {"llm": {"custom_models": [
+            {"id": "img-1", "provider": "image_gen", "api_key": "old-key", "service": "novita"},
+        ]}},
+    )
+    new_cfg = {"llm": {"custom_models": [
+        {"id": "img-1", "provider": "image_gen", "api_key": "new-key", "service": "novita"},
+    ]}, "api": {}}
+    monkeypatch.setattr(config_mod, "save_config", lambda raw: new_cfg)
+
+    scheduled = []
+    monkeypatch.setattr(
+        SCHEDULER, "schedule_once",
+        lambda name, delay_s, coro, **kw: scheduled.append((name, kw.get("dedup", False))),
+    )
+
+    client = TestClient(app)
+    r = client.put("/api/config", json={"config": {"llm": {}, "api": {}}})
+
+    assert r.status_code == 200
+    assert scheduled == [("novita_model_catalog_refresh", True)]

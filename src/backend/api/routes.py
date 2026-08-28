@@ -193,9 +193,15 @@ Write to config/config.json and reload (for WebUI configuration page)."""
         from utils.config import get_config, save_config
 
         def _first_image_gen_key(config: dict) -> str | None:
+            from media.portrait.provider import DEFAULT_IMAGE_SERVICE, ImageService
+
             models = config.get("llm", {}).get("custom_models", [])
             entry = next(
-                (m for m in models if isinstance(m, dict) and m.get("provider") == "image_gen" and m.get("api_key")),
+                (
+                    m for m in models
+                    if isinstance(m, dict) and m.get("provider") == "image_gen" and m.get("api_key")
+                    and ImageService(m.get("service") or DEFAULT_IMAGE_SERVICE) is ImageService.NOVITA
+                ),
                 None,
             )
             return entry["api_key"] if entry else None
@@ -312,13 +318,18 @@ Write to config/config.json and reload (for WebUI configuration page)."""
     @app.post("/api/image-gen/novita-models/refresh")
     async def post_novita_models_refresh_endpoint() -> dict:
         from domain.model_catalog import load_custom_models
+        from media.portrait.provider import DEFAULT_IMAGE_SERVICE, ImageService
 
         entry = next(
-            (m for m in load_custom_models() if m.get("provider") == "image_gen" and m.get("api_key")),
+            (
+                m for m in load_custom_models()
+                if m.get("provider") == "image_gen" and m.get("api_key")
+                and ImageService(m.get("service") or DEFAULT_IMAGE_SERVICE) is ImageService.NOVITA
+            ),
             None,
         )
         if entry is None:
-            return {"scheduled": False, "error": "请先保存生图模型的 API Key"}
+            return {"scheduled": False, "error": "当前没有 Novita 生图条目（NovelAI 无需刷新目录）"}
 
         async def _refresh_and_notify() -> None:
             from domain.novita_model_catalog import refresh_novita_model_catalog

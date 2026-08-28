@@ -54,7 +54,10 @@ async def test_run_portrait_generation_uses_cached_tags(monkeypatch):
             assert negative_prompt == "bad hands"
             return b"PNGDATA"
 
-    monkeypatch.setattr(cpg, "NovitaImageProvider", _FakeProvider)
+    monkeypatch.setattr(
+        cpg, "build_image_provider",
+        lambda entry: _FakeProvider(api_key=entry.get("api_key", ""), model=entry.get("model", "")),
+    )
     monkeypatch.setattr(cpg, "store_portrait", lambda name, image_bytes: "甲-123.png")
 
     hub = _FakeHub()
@@ -103,7 +106,10 @@ async def test_run_portrait_generation_extracts_tags_when_cache_missing(monkeypa
             assert prompt == "1girl, extracted, style"
             return b"PNGDATA"
 
-    monkeypatch.setattr(cpg, "NovitaImageProvider", _FakeProvider)
+    monkeypatch.setattr(
+        cpg, "build_image_provider",
+        lambda entry: _FakeProvider(api_key=entry.get("api_key", ""), model=entry.get("model", "")),
+    )
     monkeypatch.setattr(cpg, "store_portrait", lambda name, image_bytes: "甲-123.png")
 
     hub = _FakeHub()
@@ -136,7 +142,10 @@ async def test_run_portrait_generation_failure_broadcasts_error(monkeypatch):
         async def generate(self, prompt, *, negative_prompt=""):
             raise RuntimeError("novita unreachable")
 
-    monkeypatch.setattr(cpg, "NovitaImageProvider", _FailingProvider)
+    monkeypatch.setattr(
+        cpg, "build_image_provider",
+        lambda entry: _FailingProvider(api_key=entry.get("api_key", ""), model=entry.get("model", "")),
+    )
 
     hub = _FakeHub()
     monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
@@ -172,7 +181,10 @@ async def test_run_portrait_generation_retries_transient_failures_then_succeeds(
                 raise RuntimeError("failed to exec task")
             return b"PNGDATA"
 
-    monkeypatch.setattr(cpg, "NovitaImageProvider", _FlakyProvider)
+    monkeypatch.setattr(
+        cpg, "build_image_provider",
+        lambda entry: _FlakyProvider(api_key=entry.get("api_key", ""), model=entry.get("model", "")),
+    )
     monkeypatch.setattr(cpg, "store_portrait", lambda name, image_bytes: "甲-123.png")
 
     hub = _FakeHub()
@@ -211,7 +223,10 @@ async def test_run_portrait_generation_reports_error_after_exhausting_all_retrie
             attempts.append(1)
             raise RuntimeError("failed to exec task")
 
-    monkeypatch.setattr(cpg, "NovitaImageProvider", _AlwaysFailingProvider)
+    monkeypatch.setattr(
+        cpg, "build_image_provider",
+        lambda entry: _AlwaysFailingProvider(api_key=entry.get("api_key", ""), model=entry.get("model", "")),
+    )
 
     hub = _FakeHub()
     monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
@@ -341,7 +356,10 @@ async def test_run_portrait_generation_passes_entry_base_model_to_prompt_builder
         async def generate(self, prompt, *, negative_prompt=""):
             return b"PNGDATA"
 
-    monkeypatch.setattr(cpg, "NovitaImageProvider", _FakeProvider)
+    monkeypatch.setattr(
+        cpg, "build_image_provider",
+        lambda entry: _FakeProvider(api_key=entry.get("api_key", ""), model=entry.get("model", "")),
+    )
     monkeypatch.setattr(cpg, "store_portrait", lambda name, image_bytes: "甲-123.png")
 
     class _FakeHub:
@@ -353,3 +371,48 @@ async def test_run_portrait_generation_passes_entry_base_model_to_prompt_builder
     await cpg._run_portrait_generation("n", "甲")
 
     assert captured == {"tags": "1girl", "base_model": "Pony"}
+
+
+@pytest.mark.asyncio
+async def test_run_portrait_generation_dispatches_novelai_service(monkeypatch):
+    from engine.setup_chat import character_portrait_generation as cpg
+
+    class _FakeRepo:
+        def list_raw(self):
+            return [{"name": "甲", "given_name": "甲", "portrait_visual_tags": "1girl"}]
+
+    monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
+
+    entry = {"id": "img-1", "provider": "image_gen", "service": "novelai",
+             "api_key": "tok", "model": "nai-diffusion-4-5-full"}
+    monkeypatch.setattr(cpg, "_resolve_image_gen_entry", lambda novel_id: entry)
+    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model: (tags, ""))
+
+    seen = {}
+
+    def fake_build_image_provider(e):
+        seen["service"] = e.get("service")
+
+        class _P:
+            async def generate(self, prompt, *, negative_prompt=""):
+                return b"PNGDATA"
+
+        return _P()
+
+    monkeypatch.setattr(cpg, "build_image_provider", fake_build_image_provider)
+    monkeypatch.setattr(cpg, "store_portrait", lambda name, image_bytes: "甲-1.png")
+
+    class _Hub:
+        async def broadcast(self, event):
+            pass
+
+    monkeypatch.setattr("api.routes._hub_instance", lambda: _Hub())
+
+    await cpg._run_portrait_generation("n", "甲")
+    assert seen["service"] == "novelai"
+
+
+def test_max_generate_attempts_is_three():
+    from engine.setup_chat import character_portrait_generation as cpg
+
+    assert cpg._MAX_GENERATE_ATTEMPTS == 3

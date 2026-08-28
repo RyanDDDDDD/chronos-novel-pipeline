@@ -17,6 +17,10 @@ _TASK_RESULT_URL = "https://api.novita.ai/v3/async/task-result"
 _TIMEOUT_S = 60.0
 _POLL_INTERVAL_S = 2.0
 _POLL_MAX_ATTEMPTS = 30
+# Portrait bucket -- 2:3, matches the cast grid card's aspect-[2/3] and NovelAI's native
+# 832x1216. SDXL handles this ratio fine.
+_WIDTH = 832
+_HEIGHT = 1216
 # Novita hard-rejects Txt2ImgRequest.Prompt/NegativePrompt above 1024 runes with a 400
 # VALIDATOR error (confirmed live 2026-08-11) -- upstream tag composition (LLM-extracted
 # visual tags + style preset + freeform text) has no length budget of its own, so this is
@@ -49,8 +53,8 @@ class NovitaImageProvider(ImagePortraitProvider):
                         "model_name": self._model,
                         "prompt": _clamp_to_novita_limit(prompt),
                         "negative_prompt": _clamp_to_novita_limit(negative_prompt),
-                        "width": 768,
-                        "height": 1024,
+                        "width": _WIDTH,
+                        "height": _HEIGHT,
                         "image_num": 1,
                         "steps": 20,
                         "guidance_scale": 7,

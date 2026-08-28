@@ -23,6 +23,8 @@ export type ChronosConfig = {
       base_url: string
       model: string
       api_key?: string
+      base_model?: string | null
+      service?: 'novita' | 'novelai'
       client_kwargs?: Record<string, unknown>
     }[]
     local_base_url?: string

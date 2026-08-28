@@ -79,13 +79,19 @@ def register_startup_warmup(scheduler: EventScheduler, hub: MessageHub) -> None:
     async def _warm_novita_model_catalog() -> None:
         from domain.model_catalog import load_custom_models
         from domain.novita_model_catalog import refresh_novita_model_catalog
+        from media.portrait.provider import DEFAULT_IMAGE_SERVICE, ImageService
 
         entry = next(
-            (m for m in load_custom_models() if m.get("provider") == "image_gen" and m.get("api_key")),
+            (
+                m for m in load_custom_models()
+                if m.get("provider") == "image_gen"
+                and m.get("api_key")
+                and ImageService(m.get("service") or DEFAULT_IMAGE_SERVICE) is ImageService.NOVITA
+            ),
             None,
         )
         if entry is None:
-            return  # 还没配过生图 key，没什么可拉的
+            return  # 没有 Novita 生图条目 -- 没什么可拉的（NovelAI 无对应目录）
         await refresh_novita_model_catalog(entry["api_key"])
 
     scheduler.schedule_once("warm_novita_model_catalog", 0.0, _warm_novita_model_catalog)
