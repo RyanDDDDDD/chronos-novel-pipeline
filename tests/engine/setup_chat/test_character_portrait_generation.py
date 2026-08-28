@@ -95,7 +95,7 @@ async def test_run_portrait_generation_lets_cancellation_propagate(monkeypatch):
 
     fake_entry = {"id": "img-1", "provider": "image_gen", "api_key": "k", "model": "flux-1"}
     monkeypatch.setattr(cpg, "_resolve_image_gen_entry", lambda novel_id: fake_entry)
-    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model: (tags, ""))
+    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model, identity_tags=None: (tags, ""))
 
     class _CancelledProvider:
         async def generate(self, prompt, *, negative_prompt=""):
@@ -124,7 +124,7 @@ async def test_run_portrait_generation_uses_cached_tags(monkeypatch):
 
     fake_entry = {"id": "img-1", "provider": "image_gen", "api_key": "k", "model": "flux-1"}
     monkeypatch.setattr(cpg, "_resolve_image_gen_entry", lambda novel_id: fake_entry)
-    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model: (f"{tags}, style", "bad hands"))
+    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model, identity_tags=None: (f"{tags}, style", "bad hands"))
 
     class _FakeProvider:
         def __init__(self, *, api_key: str, model: str):
@@ -157,6 +157,47 @@ async def test_run_portrait_generation_uses_cached_tags(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_portrait_generation_forwards_identity_tags(monkeypatch):
+    from engine.setup_chat import character_portrait_generation as cpg
+
+    class _FakeRepo:
+        def list_raw(self):
+            return [{
+                "name": "甲", "given_name": "甲", "portrait_visual_tags": "1girl",
+                "portrait_identity_tags": "  shiroko (blue archive), blue archive  ",
+            }]
+
+    monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
+    monkeypatch.setattr(
+        cpg, "_resolve_image_gen_entry",
+        lambda novel_id: {"id": "img-1", "provider": "image_gen", "api_key": "k", "model": "m"},
+    )
+
+    seen: dict = {}
+
+    def _capture(tags, base_model, identity_tags=None):
+        seen["identity_tags"] = identity_tags
+        return (tags, "")
+
+    monkeypatch.setattr(cpg, "build_portrait_prompt", _capture)
+
+    class _FakeProvider:
+        def __init__(self, **_kw):
+            pass
+
+        async def generate(self, prompt, *, negative_prompt=""):
+            return b"PNG"
+
+    monkeypatch.setattr(cpg, "build_image_provider", lambda entry: _FakeProvider())
+    monkeypatch.setattr(cpg, "store_portrait", lambda name, image_bytes: "甲-1.png")
+    monkeypatch.setattr("api.routes._hub_instance", lambda: _FakeHub())
+
+    await cpg._run_portrait_generation("n", "甲")
+
+    assert seen["identity_tags"] == "shiroko (blue archive), blue archive"
+
+
+@pytest.mark.asyncio
 async def test_run_portrait_generation_extracts_tags_when_cache_missing(monkeypatch):
     from engine.setup_chat import character_portrait_generation as cpg
 
@@ -168,7 +209,7 @@ async def test_run_portrait_generation_extracts_tags_when_cache_missing(monkeypa
 
     fake_entry = {"id": "img-1", "provider": "image_gen", "api_key": "k", "model": "flux-1"}
     monkeypatch.setattr(cpg, "_resolve_image_gen_entry", lambda novel_id: fake_entry)
-    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model: (f"{tags}, style", ""))
+    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model, identity_tags=None: (f"{tags}, style", ""))
 
     extract_calls = []
 
@@ -215,7 +256,7 @@ async def test_run_portrait_generation_failure_broadcasts_error(monkeypatch):
 
     fake_entry = {"id": "img-1", "provider": "image_gen", "api_key": "k", "model": "flux-1"}
     monkeypatch.setattr(cpg, "_resolve_image_gen_entry", lambda novel_id: fake_entry)
-    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model: (tags, ""))
+    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model, identity_tags=None: (tags, ""))
 
     class _FailingProvider:
         def __init__(self, *, api_key: str, model: str):
@@ -249,7 +290,7 @@ async def test_run_portrait_generation_retries_transient_failures_then_succeeds(
 
     fake_entry = {"id": "img-1", "provider": "image_gen", "api_key": "k", "model": "flux-1"}
     monkeypatch.setattr(cpg, "_resolve_image_gen_entry", lambda novel_id: fake_entry)
-    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model: (tags, ""))
+    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model, identity_tags=None: (tags, ""))
 
     attempts = []
 
@@ -293,7 +334,7 @@ async def test_run_portrait_generation_reports_error_after_exhausting_all_retrie
 
     fake_entry = {"id": "img-1", "provider": "image_gen", "api_key": "k", "model": "flux-1"}
     monkeypatch.setattr(cpg, "_resolve_image_gen_entry", lambda novel_id: fake_entry)
-    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model: (tags, ""))
+    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model, identity_tags=None: (tags, ""))
 
     attempts = []
 
@@ -424,7 +465,7 @@ async def test_run_portrait_generation_passes_entry_base_model_to_prompt_builder
 
     captured = {}
 
-    def fake_build_portrait_prompt(tags, base_model):
+    def fake_build_portrait_prompt(tags, base_model, identity_tags=None):
         captured["tags"] = tags
         captured["base_model"] = base_model
         return "prompt", "negative"
@@ -468,7 +509,7 @@ async def test_run_portrait_generation_dispatches_novelai_service(monkeypatch):
     entry = {"id": "img-1", "provider": "image_gen", "service": "novelai",
              "api_key": "tok", "model": "nai-diffusion-4-5-full"}
     monkeypatch.setattr(cpg, "_resolve_image_gen_entry", lambda novel_id: entry)
-    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model: (tags, ""))
+    monkeypatch.setattr(cpg, "build_portrait_prompt", lambda tags, base_model, identity_tags=None: (tags, ""))
 
     seen = {}
 

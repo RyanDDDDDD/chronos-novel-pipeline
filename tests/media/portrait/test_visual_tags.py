@@ -21,15 +21,18 @@ def test_describe_character_visual_only_includes_visible_fields():
     from media.portrait.visual_tags import _describe_character_visual
 
     char = {
+        "given_name": "白洲梓",
         "gender": "female", "physique": {"体型": "娇小"},
         "clothing_dna": {"signature_outfit": "白衬衫"},
         "personality": "傲娇", "identity_background": "没落贵族",
     }
-    described = _describe_character_visual(char)
+    described = _describe_character_visual(char, franchise="Blue Archive")
 
     assert "娇小" in described
     assert "白衬衫" in described
     assert "female" in described
+    assert "name: 白洲梓" in described
+    assert "franchise: Blue Archive" in described
     assert "傲娇" not in described
     assert "没落贵族" not in described
 
@@ -138,14 +141,42 @@ async def test_extract_visual_tags_appends_directive_when_active(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_extract_visual_tags_feeds_franchise_and_identity_anchor(monkeypatch):
+    from context import content_packs as cp
+    from media.portrait import visual_tags
+
+    monkeypatch.setattr(cp, "active_portrait_directive", lambda: None)
+    fake_llm = _FakeLLM("shiroko (blue archive), blue archive, 1girl")
+    monkeypatch.setattr("llm.factory.get_cloud_llm", lambda: fake_llm)
+
+    char = {"given_name": "白洲梓", "gender": "female", "physique": {}, "clothing_dna": {}}
+    await visual_tags.extract_visual_tags(char, franchise="Blue Archive")
+    user_content = fake_llm.calls[0][1].content
+    assert "franchise: Blue Archive" in user_content
+    assert "name: 白洲梓" in user_content
+    assert "identity_anchor_provided" not in user_content
+
+    fake_llm.calls.clear()
+    await visual_tags.extract_visual_tags(
+        {**char, "portrait_identity_tags": "shiroko (blue archive)"}, franchise="Blue Archive",
+    )
+    assert "identity_anchor_provided: yes" in fake_llm.calls[0][1].content
+
+    system_content = fake_llm.calls[0][0].content
+    assert "danbooru tags" in system_content.lower()
+
+
+@pytest.mark.asyncio
 async def test_extract_and_persist_visual_tags_writes_only_target_character(monkeypatch):
     from media.portrait import visual_tags
 
-    async def fake_extract(character):
+    async def fake_extract(character, *, franchise=""):
         assert character["name"] == "甲"
+        assert franchise == "Blue Archive"
         return "1girl, silver hair"
 
     monkeypatch.setattr(visual_tags, "extract_visual_tags", fake_extract)
+    monkeypatch.setattr("api.services.novels.get_source_franchise", lambda nid: "Blue Archive")
 
     saved = {}
 
