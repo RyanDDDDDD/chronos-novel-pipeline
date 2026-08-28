@@ -122,6 +122,24 @@ export async function setProseStyle(
   return res.json().catch(() => ({ ok: false, error: '请求失败' }))
 }
 
+export async function getSourceFranchise(id: string): Promise<string> {
+  const res = await fetch(`/api/novels/${id}/source-franchise`)
+  const body = await res.json().catch(() => ({}))
+  return typeof body.franchise === 'string' ? body.franchise : ''
+}
+
+export async function setSourceFranchise(
+  id: string,
+  franchise: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/novels/${id}/source-franchise`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ franchise }),
+  })
+  return res.json().catch(() => ({ ok: false, error: '请求失败' }))
+}
+
 import type { StateDeriveFieldSpec } from '@/shared/types'
 
 export async function listStateDeriveFields(): Promise<StateDeriveFieldSpec[]> {

@@ -102,6 +102,20 @@ describe('parseCastCharacterMarkdown', () => {
     expect(payload.portrait_visual_tags).toBe('1girl, golden hair')
   })
 
+  it('parses and roundtrips a manually edited identity anchor section', () => {
+    const baseline = {
+      name: '甲', portrait_identity_tags: 'shiroko (blue archive), blue archive',
+    } as CastCharacter
+    const md = buildCastCharacterMarkdown(baseline, [])
+    const edited = md.replace('shiroko (blue archive), blue archive', 'hoshino (blue archive), blue archive')
+
+    const parsed = parseCastCharacterMarkdown(edited, { baseline })
+    expect(parsed.portrait_identity_tags).toBe('hoshino (blue archive), blue archive')
+
+    const payload = buildCastCharacterPatchPayload(baseline, parsed, [])
+    expect(payload.portrait_identity_tags).toBe('hoshino (blue archive), blue archive')
+  })
+
   it('parseTagList treats empty marker as empty list', () => {
     expect(parseTagList('（无）')).toEqual([])
     expect(parseTagList('a、b')).toEqual(['a', 'b'])

@@ -111,6 +111,7 @@ export function buildCastCharacterMarkdown(
     lines.push(`- **材质**：${joinTags(dna.materials_preference)}`)
   }
 
+  if (char.portrait_identity_tags) lines.push('', `## 形象锚定`, '', char.portrait_identity_tags)
   if (char.portrait_visual_tags) lines.push('', `## 生图提示词`, '', char.portrait_visual_tags)
 
   if (char.hobbies?.length) lines.push('', `## 爱好`, '', joinTags(char.hobbies))

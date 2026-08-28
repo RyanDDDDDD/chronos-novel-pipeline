@@ -47,6 +47,17 @@ describe('buildCastCharacterMarkdown', () => {
     expect(buildCastCharacterMarkdown(withoutTags, [])).not.toContain('生图提示词')
   })
 
+  it('includes the identity anchor section when set, omits it otherwise', () => {
+    const withAnchor = {
+      name: '甲', portrait_identity_tags: 'shiroko (blue archive), blue archive',
+    } as CastCharacter
+    const md = buildCastCharacterMarkdown(withAnchor, [])
+    expect(md).toContain('## 形象锚定')
+    expect(md).toContain('shiroko (blue archive), blue archive')
+
+    expect(buildCastCharacterMarkdown({ name: '甲' } as CastCharacter, [])).not.toContain('形象锚定')
+  })
+
   it('includes slider ladder and relationships', () => {
     const char = {
       name: '甲',

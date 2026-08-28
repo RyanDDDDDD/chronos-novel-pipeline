@@ -28,6 +28,7 @@ export function buildCastCharacterPatchPayload(
     hobbies: parsed.hobbies ?? baseline.hobbies ?? [],
     verbal_tic: parsed.verbal_tic ?? baseline.verbal_tic ?? '',
     portrait_visual_tags: parsed.portrait_visual_tags ?? baseline.portrait_visual_tags ?? '',
+    portrait_identity_tags: parsed.portrait_identity_tags ?? baseline.portrait_identity_tags ?? '',
   }
 
   for (const spec of customFieldSpecs) {

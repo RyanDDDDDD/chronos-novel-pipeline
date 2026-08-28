@@ -200,6 +200,15 @@ export default function CastCharacterDetailModal({
                   </p>
                 </div>
               )}
+              {!character.portrait_identity_tags && (
+                <div className="mt-2 rounded-md border border-dashed border-[var(--c-border)] px-3 py-2">
+                  <p className="text-xs font-medium text-[var(--c-text-faint)]">形象锚定</p>
+                  <p className="mt-1 text-xs text-[var(--c-text-muted)]">
+                    这个角色若出自某个已有作品，可在「编辑」里加「形象锚定」段落，填该角色的 booru 标签
+                    （如 <span className="font-mono">shiroko (blue archive), blue archive</span>），让立绘贴合原作形象。
+                  </p>
+                </div>
+              )}
             </>
           )}
         </div>

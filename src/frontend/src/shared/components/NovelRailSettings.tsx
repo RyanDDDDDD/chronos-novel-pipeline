@@ -4,6 +4,7 @@ import {
   Moon,
   ALargeSmall,
   Sparkles,
+  BookMarked,
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
@@ -13,6 +14,7 @@ import { useReadingFontSize } from '@/shared/hooks/useReadingFontSize'
 import type { ReadingFontSize } from '@/shared/utils/readingFontSize'
 import { THEME_LABELS, THEME_ORDER } from '@/shared/utils/theme'
 import ProseStylePanel from '@/features/setup/components/ProseStylePanel'
+import SourceFranchisePanel from '@/features/setup/components/SourceFranchisePanel'
 import { Button } from '@/shared/components/ui/button'
 import {
   DropdownMenu,
@@ -29,9 +31,9 @@ const READING_FONT_SIZE_LABELS: Record<ReadingFontSize, string> = {
 
 const READING_FONT_SIZE_ORDER: ReadingFontSize[] = ['small', 'default', 'large', 'xlarge']
 
-type SubMenu = 'theme' | 'font' | 'prose'
+type SubMenu = 'theme' | 'font' | 'prose' | 'franchise'
 
-/** Theme / reading font / prose style — nested under one「设定」control on the novel rail. */
+/** Theme / reading font / prose style / source franchise — nested under one「设定」control on the novel rail. */
 export default function NovelRailSettings({
   novelId,
   collapsed,
@@ -73,7 +75,7 @@ export default function NovelRailSettings({
         <DropdownMenuContent
           side="right"
           align="end"
-          className={subMenu === 'prose' ? 'w-72 p-3 space-y-3' : 'w-44 p-1'}
+          className={subMenu === 'prose' || subMenu === 'franchise' ? 'w-72 p-3 space-y-3' : 'w-44 p-1'}
         >
           {subMenu === null && (
             <>
@@ -91,6 +93,11 @@ export default function NovelRailSettings({
                 icon={<Sparkles size={14} />}
                 label="文风"
                 onClick={() => setSubMenu('prose')}
+              />
+              <SubMenuRow
+                icon={<BookMarked size={14} />}
+                label="原作出处"
+                onClick={() => setSubMenu('franchise')}
               />
             </>
           )}
@@ -129,6 +136,13 @@ export default function NovelRailSettings({
             <>
               <BackRow onBack={() => setSubMenu(null)} label="文风" />
               <ProseStylePanel novelId={novelId} embedded onClose={closeAll} />
+            </>
+          )}
+
+          {subMenu === 'franchise' && (
+            <>
+              <BackRow onBack={() => setSubMenu(null)} label="原作出处" />
+              <SourceFranchisePanel novelId={novelId} onClose={closeAll} />
             </>
           )}
         </DropdownMenuContent>
