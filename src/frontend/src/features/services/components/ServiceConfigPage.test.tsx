@@ -266,7 +266,7 @@ describe('ServiceConfigPage 自定义模型表格', () => {
   })
 
   it('选中 Novita checkpoint 时把 base_model 一并存进新建的生图模型草稿', async () => {
-    let savedConfig: { config: { llm: { custom_models: { model: string; base_model?: string }[] } } } | null = null
+    let savedConfig: { config: { llm: { custom_models: { model: string; base_model?: string; service?: string }[] } } } | null = null
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       if (url === '/api/config' && (!init || init.method === undefined)) {
         return { ok: true, json: async () => ({ config: { llm: { custom_models: [] } } }) }
@@ -301,10 +301,11 @@ describe('ServiceConfigPage 自定义模型表格', () => {
 
     const entry = savedConfig!.config.llm.custom_models.find(m => m.model === 'pony-v6.safetensors')
     expect(entry.base_model).toBe('Pony')
+    expect(entry.service).toBe('novita')
   })
 
   it('选中 Novita checkpoint 时显示名默认自动同步为模型名', async () => {
-    let savedConfig: { config: { llm: { custom_models: { model: string; label: string }[] } } } | null = null
+    let savedConfig: { config: { llm: { custom_models: { model: string; label: string; service?: string }[] } } } | null = null
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       if (url === '/api/config' && (!init || init.method === undefined)) {
         return { ok: true, json: async () => ({ config: { llm: { custom_models: [] } } }) }
@@ -340,15 +341,18 @@ describe('ServiceConfigPage 自定义模型表格', () => {
 
     const entry = savedConfig!.config.llm.custom_models.find(m => m.model === 'pony-v6.safetensors')
     expect(entry?.label).toBe('pony-v6.safetensors')
+    expect(entry?.service).toBe('novita')
   })
 
   it('手动改过显示名后再切换模型不会被自动覆盖', async () => {
+    let savedConfig: { config: { llm: { custom_models: { model: string; label: string; service?: string }[] } } } | null = null
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       if (url === '/api/config' && (!init || init.method === undefined)) {
         return { ok: true, json: async () => ({ config: { llm: { custom_models: [] } } }) }
       }
       if (url === '/api/config' && init?.method === 'PUT') {
-        return { ok: true, json: async () => ({ config: {} }) }
+        savedConfig = JSON.parse(String(init.body))
+        return { ok: true, json: async () => savedConfig }
       }
       if (url === '/api/llm/catalog') {
         return { ok: true, json: async () => ({ cloud_models: [] }) }
@@ -373,6 +377,121 @@ describe('ServiceConfigPage 自定义模型表格', () => {
     fireEvent.click(await screen.findByText('flux-1.safetensors'))
 
     expect((screen.getByLabelText('显示名') as HTMLInputElement).value).toBe('我的自定义名称')
+
+    fireEvent.click(screen.getByRole('button', { name: '保存此模型' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(savedConfig).not.toBeNull())
+    const entry = savedConfig!.config.llm.custom_models.find(m => m.model === 'flux-1.safetensors')
+    expect(entry?.service).toBe('novita')
+  })
+
+  it('「生图模型」tab → 添加生图模型 → 默认展示 service 选择器且选中 Novita；点 NovelAI 后改为模型下拉', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/config') {
+        return { ok: true, json: async () => ({ config: { llm: { custom_models: [] } } }) }
+      }
+      if (url === '/api/llm/catalog') {
+        return { ok: true, json: async () => ({ cloud_models: [] }) }
+      }
+      if (url === '/api/image-gen/novita-models') {
+        return { ok: true, json: async () => ({ models: [], base_models: {} }) }
+      }
+      return { ok: true, json: async () => ({}) }
+    }))
+
+    renderPage()
+    fireEvent.click(await screen.findByText('生图模型'))
+    fireEvent.click(await screen.findByRole('button', { name: '添加生图模型' }))
+
+    const novitaBtn = await screen.findByRole('button', { name: 'Novita' })
+    const novelaiBtn = await screen.findByRole('button', { name: 'NovelAI' })
+    expect(novitaBtn.getAttribute('aria-pressed')).toBe('true')
+    expect(novelaiBtn.getAttribute('aria-pressed')).toBe('false')
+    // Novita 分支：无缓存目录时 NovitaModelPicker 落回手动「模型 ID」输入。
+    expect(screen.getByLabelText('模型 ID')).toBeTruthy()
+    expect(screen.queryByLabelText('NovelAI 模型')).toBeNull()
+
+    fireEvent.click(novelaiBtn)
+
+    expect(screen.queryByLabelText('模型 ID')).toBeNull()
+    const select = (await screen.findByLabelText('NovelAI 模型')) as HTMLSelectElement
+    expect(select.value).toBe('nai-diffusion-5-full')
+    expect(screen.getByText('NAI Diffusion V5 Full')).toBeTruthy()
+    expect(screen.getByText('NAI Diffusion V4.5 Full')).toBeTruthy()
+  })
+
+  it('编辑已保存的 NovelAI 生图条目：不渲染 NovitaModelPicker，也不请求 novita-models', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/api/config') {
+        return {
+          ok: true,
+          json: async () => ({
+            config: {
+              llm: {
+                custom_models: [{
+                  id: 'nai-1', label: '我的NovelAI', provider: 'image_gen',
+                  base_url: '', model: 'nai-diffusion-4-5-full', api_key: 'nai-token', service: 'novelai',
+                }],
+              },
+            },
+          }),
+        }
+      }
+      if (url === '/api/llm/catalog') {
+        return { ok: true, json: async () => ({ cloud_models: [] }) }
+      }
+      return { ok: true, json: async () => ({}) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    fireEvent.click(await screen.findByText('生图模型'))
+    fireEvent.click(await screen.findByText('我的NovelAI'))
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0])
+
+    const select = (await screen.findByLabelText('NovelAI 模型')) as HTMLSelectElement
+    expect(select.value).toBe('nai-diffusion-4-5-full')
+    expect(screen.queryByLabelText('模型 ID')).toBeNull()
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('novita-models'))).toBe(false)
+  })
+
+  it('选中 NovelAI + 选模型 + 填 token + 保存 → custom_models 条目 service/model/provider 正确', async () => {
+    let savedConfig: {
+      config: { llm: { custom_models: { model: string; service?: string; provider: string; api_key?: string }[] } }
+    } | null = null
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config' && (!init || init.method === undefined)) {
+        return { ok: true, json: async () => ({ config: { llm: { custom_models: [] } } }) }
+      }
+      if (url === '/api/config' && init?.method === 'PUT') {
+        savedConfig = JSON.parse(String(init.body))
+        return { ok: true, json: async () => savedConfig }
+      }
+      if (url === '/api/llm/catalog') {
+        return { ok: true, json: async () => ({ cloud_models: [] }) }
+      }
+      if (url === '/api/image-gen/novita-models') {
+        return { ok: true, json: async () => ({ models: [], base_models: {} }) }
+      }
+      return { ok: true, json: async () => ({}) }
+    }))
+
+    renderPage()
+    fireEvent.click(await screen.findByText('生图模型'))
+    fireEvent.click(await screen.findByRole('button', { name: '添加生图模型' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'NovelAI' }))
+
+    fireEvent.change(await screen.findByLabelText('NovelAI 模型'), { target: { value: 'nai-diffusion-4-5-full' } })
+    fireEvent.change(screen.getByPlaceholderText('NovelAI 持久 API Token'), { target: { value: 'nai-token-xyz' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存此模型' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(savedConfig).not.toBeNull())
+
+    const entry = savedConfig!.config.llm.custom_models.find(m => m.model === 'nai-diffusion-4-5-full')
+    expect(entry).toMatchObject({
+      service: 'novelai', model: 'nai-diffusion-4-5-full', provider: 'image_gen', api_key: 'nai-token-xyz',
+    })
   })
 
   it('删除一条自定义模型后从列表消失', async () => {

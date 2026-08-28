@@ -4,7 +4,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { fetchModelCatalog, fetchLocalModels, fetchCompatibleModels, type CloudModelEntry } from '@/features/services/utils/llmCatalog'
 import PageHeader from '@/shared/components/PageHeader'
 import ModelRadioList from '@/shared/components/ModelRadioList'
-import NovitaModelPicker from '@/features/services/components/NovitaModelPicker'
+import ImageServiceModelFields from '@/features/services/components/ImageServiceModelFields'
 import CloudLoginDialog from '@/features/services/components/CloudLoginDialog'
 import { loginStatusHydrated } from '@/features/services/store/cloudAuthSlice'
 import { Switch } from '@/shared/components/ui/switch'
@@ -56,14 +56,15 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
   )
 }
 
-function ModelKeyRow({
-  value, revealed, onToggleReveal, onChange, showMissingWarning,
+export function ModelKeyRow({
+  value, revealed, onToggleReveal, onChange, showMissingWarning, label = 'API 密钥',
 }: {
   value: string
   revealed: boolean
   onToggleReveal: () => void
   onChange: (v: string) => void
   showMissingWarning: boolean
+  label?: string
 }) {
   return (
     <div className="pt-1.5 border-t border-slate-100 space-y-1">
@@ -71,7 +72,7 @@ function ModelKeyRow({
         <Input
           className="flex-1 min-w-0 text-xs font-mono"
           type={revealed ? 'text' : 'password'}
-          placeholder="API 密钥"
+          placeholder={label}
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -102,6 +103,7 @@ interface CustomModelDraft {
   model: string
   api_key: string
   base_model?: string | null
+  service?: 'novita' | 'novelai'
 }
 
 function CustomModelForm({
@@ -829,6 +831,8 @@ export default function ServiceConfigPage() {
                           onClick={() => setEditingImageCustomModel({
                             id: entry.id, label: entry.label, provider: 'image_gen',
                             base_url: entry.base_url, model: entry.model, api_key: entry.api_key ?? '',
+                            base_model: (entry as { base_model?: string | null }).base_model ?? null,
+                            service: (entry as { service?: 'novita' | 'novelai' }).service ?? 'novita',
                           })}
                         >
                           编辑
@@ -854,19 +858,11 @@ export default function ServiceConfigPage() {
                               onChange={e => setEditingImageCustomModel({ ...editingImageCustomModel, label: e.target.value })}
                             />
                           </Field>
-                          <ModelKeyRow
-                            value={editingImageCustomModel.api_key}
-                            revealed={showImageKey}
-                            onToggleReveal={() => setShowImageKey(v => !v)}
-                            onChange={v => setEditingImageCustomModel({ ...editingImageCustomModel, api_key: v })}
-                            showMissingWarning={false}
-                          />
-                          <NovitaModelPicker
-                            value={editingImageCustomModel.model}
-                            onChange={(v, baseModel) => setEditingImageCustomModel(prev => (prev && ({
-                              ...prev, model: v, base_model: baseModel,
-                              label: (prev.label === '' || prev.label === prev.model) ? v : prev.label,
-                            })))}
+                          <ImageServiceModelFields
+                            draft={editingImageCustomModel}
+                            onChange={next => setEditingImageCustomModel(next)}
+                            showKey={showImageKey}
+                            onToggleKey={() => setShowImageKey(v => !v)}
                           />
                           <div className="flex gap-2">
                             <Button
@@ -907,19 +903,11 @@ export default function ServiceConfigPage() {
                           onChange={e => setEditingImageCustomModel({ ...editingImageCustomModel, label: e.target.value })}
                         />
                       </Field>
-                      <ModelKeyRow
-                        value={editingImageCustomModel.api_key}
-                        revealed={showImageKey}
-                        onToggleReveal={() => setShowImageKey(v => !v)}
-                        onChange={v => setEditingImageCustomModel({ ...editingImageCustomModel, api_key: v })}
-                        showMissingWarning={false}
-                      />
-                      <NovitaModelPicker
-                        value={editingImageCustomModel.model}
-                        onChange={(v, baseModel) => setEditingImageCustomModel(prev => (prev && ({
-                          ...prev, model: v, base_model: baseModel,
-                          label: (prev.label === '' || prev.label === prev.model) ? v : prev.label,
-                        })))}
+                      <ImageServiceModelFields
+                        draft={editingImageCustomModel}
+                        onChange={next => setEditingImageCustomModel(next)}
+                        showKey={showImageKey}
+                        onToggleKey={() => setShowImageKey(v => !v)}
                       />
                       <div className="flex gap-2">
                         <Button
@@ -949,7 +937,7 @@ export default function ServiceConfigPage() {
                     <Button
                       type="button" variant="outline" size="sm" className="text-xs"
                       onClick={() => setEditingImageCustomModel({
-                        id: 'new', label: '', provider: 'image_gen', base_url: '', model: '', api_key: '',
+                        id: 'new', label: '', provider: 'image_gen', base_url: '', model: '', api_key: '', service: 'novita',
                       })}
                     >
                       添加生图模型
