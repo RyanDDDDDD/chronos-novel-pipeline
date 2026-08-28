@@ -85,3 +85,61 @@ async def test_register_startup_warmup_skips_novita_pull_without_key(monkeypatch
     await s.stop()
 
     assert refresh_calls == []
+
+
+@pytest.mark.asyncio
+async def test_register_startup_warmup_skips_novita_pull_for_novelai_entry(monkeypatch):
+    """A NovelAI image_gen entry must not trigger the Novita catalog pull -- NovelAI has
+    no equivalent catalog to warm."""
+    import domain.model_catalog as model_catalog_mod
+    import domain.novita_model_catalog as nmc_mod
+
+    monkeypatch.setattr(
+        model_catalog_mod, "load_custom_models",
+        lambda: [{"id": "img-1", "provider": "image_gen", "api_key": "sk-real", "service": "novelai"}],
+    )
+    refresh_calls = []
+
+    async def fake_refresh(api_key):
+        refresh_calls.append(api_key)
+        return []
+
+    monkeypatch.setattr(nmc_mod, "refresh_novita_model_catalog", fake_refresh)
+
+    s = EventScheduler()
+    hub = _FakeHub()
+    register_startup_warmup(s, hub)
+    s.start()
+    await asyncio.sleep(0.05)
+    await s.stop()
+
+    assert refresh_calls == []
+
+
+@pytest.mark.asyncio
+async def test_register_startup_warmup_pulls_novita_catalog_for_explicit_novita_entry(monkeypatch):
+    """An explicit service="novita" entry keeps triggering the warm-up pull, same as a
+    legacy entry with no `service` field."""
+    import domain.model_catalog as model_catalog_mod
+    import domain.novita_model_catalog as nmc_mod
+
+    monkeypatch.setattr(
+        model_catalog_mod, "load_custom_models",
+        lambda: [{"id": "img-1", "provider": "image_gen", "api_key": "sk-real", "service": "novita"}],
+    )
+    refresh_calls = []
+
+    async def fake_refresh(api_key):
+        refresh_calls.append(api_key)
+        return []
+
+    monkeypatch.setattr(nmc_mod, "refresh_novita_model_catalog", fake_refresh)
+
+    s = EventScheduler()
+    hub = _FakeHub()
+    register_startup_warmup(s, hub)
+    s.start()
+    await asyncio.sleep(0.05)
+    await s.stop()
+
+    assert refresh_calls == ["sk-real"]

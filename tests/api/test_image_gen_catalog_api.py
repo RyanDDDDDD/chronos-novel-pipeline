@@ -84,4 +84,21 @@ def test_post_novita_models_refresh_errors_without_key(monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["scheduled"] is False
-    assert "API Key" in body["error"]
+    assert "Novita" in body["error"]
+
+
+def test_post_novita_models_refresh_errors_for_novelai_only_entry(monkeypatch):
+    """A configured NovelAI image_gen entry has no Novita catalog to refresh -- the
+    endpoint must report the no-Novita-entry error rather than scheduling a refresh."""
+    monkeypatch.setattr(
+        "domain.model_catalog.load_custom_models",
+        lambda: [{"id": "img-1", "provider": "image_gen", "api_key": "sk-novelai", "service": "novelai"}],
+    )
+
+    client = TestClient(app_under_test())
+    r = client.post("/api/image-gen/novita-models/refresh")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["scheduled"] is False
+    assert "Novita" in body["error"]
