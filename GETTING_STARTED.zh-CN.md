@@ -64,7 +64,7 @@ copy config\config.example.json config\config.json
 |------|----------|----------|
 | **文本生成** | WebUI「服务配置」页 → 模型 → 文本 tab：选预设云端模型（`config/model_catalog.json` 里的 Claude / DeepSeek / Qwen / Gemini）或添加自定义条目（`llm.custom_models`，`provider` 为 `openai_compatible` / `anthropic`）；本地模型走「本地」tab（`llm.local_base_url` + `local_model`，LM Studio / Ollama，无需 Key）。API Key 按模型 id 存进 `api.model_api_keys` | 保存后立即热重载（重置云端 LLM 缓存 + 重建 setup-chat agent），无需重启 |
 | **图像识别（识图）** | 不是独立 provider——从已配置的文本模型（云端预设或自定义，选一个支持视觉的）里挑一个，绑定到 WebUI「Pipeline 配置」视图里「图片识别」/「一键建设定」/「文本识别」等能力节点的 `model_ref`（按小说独立配置，存在该小说的 `author_loop_skill_prefs.json`） | 保存后下次调用即生效 |
-| **图像生成（生图）** | WebUI「服务配置」页 → 模型 → 图像 tab：添加自定义条目（`llm.custom_models` 里 `provider: "image_gen"`，走 Novita，checkpoint 模型列表实时拉取），配好后绑定到「Pipeline 配置」视图「立绘生成」节点的 `model_ref` | 保存 Key 会触发一次 Novita 模型列表刷新；绑定后下次生成生效 |
+| **图像生成（生图）** | WebUI「服务配置」页 → 模型 → 图像 tab：添加自定义条目（`llm.custom_models` 里 `provider: "image_gen"`），二选一：**Novita**（`service: "novita"`，checkpoint 模型列表实时拉取）或 **NovelAI**（`service: "novelai"`，填持久 API Token + 选固定模型档，需 NovelAI 订阅）。配好后绑定到「Pipeline 配置」视图「立绘生成」节点的 `model_ref` | Novita 保存 Key 触发一次目录刷新；NovelAI 无需刷新；绑定后下次生成生效 |
 | **联网检索** | WebUI「服务配置」页 →「API 密钥」区：二选一 `search_provider`（Tavily 或百度千帆），填对应 Key（`api.tavily_api_key` / `api.qianfan_api_key`），`search_top_k` 控制单次返回条数上限 | 保存后立即生效 |
 
 > **不要混淆**：RAG 检索用的 embedding 模型（`BAAI/bge-small-zh-v1.5`）是固定的本地 ONNX 模型（`src/backend/rag/embedding.py`，通过 FastEmbed 运行），跟上表「联网检索」（网页搜索）完全是两回事——不需要配置、不需要 Key，也不受 `search_provider` 影响。
