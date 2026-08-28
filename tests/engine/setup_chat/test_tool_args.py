@@ -21,14 +21,23 @@ def test_set_source_franchise_args_accepts_empty_string():
     assert SetSourceFranchiseArgs(franchise="Blue Archive").franchise == "Blue Archive"
 
 
-def test_character_field_schemas_carry_optional_portrait_tag_fields():
+def test_set_portrait_prompt_args_require_at_least_one_field():
+    from engine.setup_chat.tool_args import SetPortraitPromptArgs
+
+    assert SetPortraitPromptArgs(name="甲", visual_tags="1girl").visual_tags == "1girl"
+    assert SetPortraitPromptArgs(name="甲", identity_tags="").identity_tags == ""
+    with pytest.raises(ValidationError):
+        SetPortraitPromptArgs(name="甲")
+
+
+def test_portrait_tag_fields_are_add_only_not_edit():
     from engine.setup_chat.tool_args import build_add_character_args, build_edit_character_args
 
-    for build in (build_add_character_args, build_edit_character_args):
-        fields = build().model_fields
-        for key in ("portrait_identity_tags", "portrait_visual_tags"):
-            assert key in fields
-            assert fields[key].default is None
+    add_fields = build_add_character_args().model_fields
+    edit_fields = build_edit_character_args().model_fields
+    for key in ("portrait_identity_tags", "portrait_visual_tags"):
+        assert key in add_fields and add_fields[key].default is None
+        assert key not in edit_fields
 
 
 def test_gender_field_description_reflects_content_packs(monkeypatch):

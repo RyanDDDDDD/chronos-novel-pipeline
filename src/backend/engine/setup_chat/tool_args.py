@@ -191,17 +191,6 @@ Role complete field (common to add/edit); hard verification is completed at this
         "如'表面嘴硬冷漠，内心其实很依恋对方，容易口是心非'）；后续章节可由 "
         "write_character_archive 按需演变（personality 没有转折就不必每章重填）"
     )
-    portrait_identity_tags: str | None = Field(
-        default=None,
-        description="（可选）立绘身份锚定标签：该角色若出自某个已有作品，填 danbooru 风格的角色标签串，"
-        "如 `shiroko (blue archive), blue archive`，会原样拼到生图 prompt 最前面锚定原作形象；"
-        "原创角色留空。不传=不改动。",
-    )
-    portrait_visual_tags: str | None = Field(
-        default=None,
-        description="（可选）立绘外观提示词（英文 booru 关键词串）。一般留空，由系统按体型/着装自动提取；"
-        "想手动控制立绘外观时才填。不传=不改动（改了体型/着装则仍会自动重提取覆盖）。",
-    )
 
     @field_validator("given_name")
     @classmethod
@@ -314,6 +303,20 @@ def build_add_character_args() -> type[BaseModel]:
 
     class _AddCharacterArgs(base):  # type: ignore[misc, valid-type]
         """Add a new role; use read_setup_summary('schema') to check if you are not sure about the fields before filling them in."""
+
+        # Portrait prompt fields are creation-time only here -- after a character exists,
+        # tweak them with set_portrait_prompt (edit_character no longer touches them).
+        portrait_identity_tags: str | None = Field(
+            default=None,
+            description="（可选）立绘身份锚定标签：该角色若出自某个已有作品，填 danbooru 风格的角色标签串，"
+            "如 `shiroko (blue archive), blue archive`，会原样拼到生图 prompt 最前面锚定原作形象；"
+            "原创角色留空。之后要改用 set_portrait_prompt。",
+        )
+        portrait_visual_tags: str | None = Field(
+            default=None,
+            description="（可选）立绘外观提示词（英文 booru 关键词串）。一般留空，由系统按体型/着装自动提取；"
+            "想手动控制立绘外观时才填。之后要改用 set_portrait_prompt。",
+        )
 
     return _AddCharacterArgs
 
@@ -576,6 +579,26 @@ class SetSourceFranchiseArgs(BaseModel):
         description="这本小说是哪个已有作品的同人（如「碧蓝档案」/「Blue Archive」）；"
         "留空字符串=原创作品。设定后，各角色立绘会尝试按 danbooru 角色标签锚定原作形象。"
     )
+
+
+class SetPortraitPromptArgs(BaseModel):
+    name: str = Field(description="要改立绘 prompt 的角色名（cast 中定位用）")
+    visual_tags: str | None = Field(
+        default=None,
+        description="立绘外观提示词（英文 booru 关键词串）。不传=不改这项；传空字符串=清空"
+        "（下次生图按体型/着装自动重提取）。",
+    )
+    identity_tags: str | None = Field(
+        default=None,
+        description="立绘身份锚定标签——该角色出自某作品时的 danbooru 标签串，如 "
+        "`shiroko (blue archive), blue archive`。不传=不改这项；传空字符串=清空。",
+    )
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> SetPortraitPromptArgs:
+        if self.visual_tags is None and self.identity_tags is None:
+            raise ValueError("visual_tags / identity_tags 至少给一个")
+        return self
 
 
 class WriteCharacterArchiveArgs(BaseModel):

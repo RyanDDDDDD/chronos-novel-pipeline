@@ -52,6 +52,7 @@ from engine.setup_chat.tool_args import (
     RemoveRelationshipEdgeArgs,
     RenameNovelTitleArgs,
     SetChapterDirectionArgs,
+    SetPortraitPromptArgs,
     SetSourceFranchiseArgs,
     SetStageExtensionsArgs,
     SetStageLensArgs,
@@ -434,23 +435,21 @@ async def _edit_character_core(
             return False, f"角色「{new_name}」已存在，请换个名字。", None
 
     old_char = roster[idx]
-    visual_changed = (
-        old_char.get("gender") != char.get("gender")
-        or old_char.get("physique") != char.get("physique")
-        or old_char.get("clothing_dna") != char.get("clothing_dna")
-    )
-    # portrait_identity_tags: a pure manual anchor, never auto-derived -- None = leave as-is.
-    if portrait_identity_tags is not None:
-        char["portrait_identity_tags"] = portrait_identity_tags.strip()
-    elif isinstance(old_char.get("portrait_identity_tags"), str):
-        char["portrait_identity_tags"] = old_char["portrait_identity_tags"]
-    if portrait_visual_tags is not None:
-        # Explicit manual override (e.g. the cast detail panel) -- appearance-field
-        # changes in this same edit still win below via schedule_extract_visual_tags,
-        # since a real appearance change makes any hand-typed tags stale.
-        char["portrait_visual_tags"] = portrait_visual_tags.strip()
-    elif not visual_changed and isinstance(old_char.get("portrait_visual_tags"), str):
-        char["portrait_visual_tags"] = old_char["portrait_visual_tags"]
+    # Portrait state is carried forward verbatim across an edit -- it is managed by
+    # set_portrait_prompt / the cast panel, never derived from the character's other fields.
+    # An edit never re-extracts portrait_visual_tags: a stale value after an appearance
+    # change is re-derived lazily on the next portrait regeneration. The two *_tags params
+    # are non-None only from the manual cast-panel route.
+    for key, override in (
+        ("portrait_identity_tags", portrait_identity_tags),
+        ("portrait_visual_tags", portrait_visual_tags),
+    ):
+        if override is not None:
+            char[key] = override.strip()
+        elif isinstance(old_char.get(key), str):
+            char[key] = old_char[key]
+    if isinstance(old_char.get("portrait_path"), str):
+        char["portrait_path"] = old_char["portrait_path"]
 
     roster[idx] = char
     roster_errs = validate_character_edit(char, roster, strict_race_membership=False)
@@ -467,11 +466,6 @@ async def _edit_character_core(
     from engine.memory_recall.entity_index import invalidate_entity_vocab_cache
 
     invalidate_entity_vocab_cache()
-
-    if visual_changed:
-        from engine.setup_chat.character_visual_tags import schedule_extract_visual_tags
-
-        schedule_extract_visual_tags(given_name)
 
     from engine.archive.archive_view import delete_character_archives
     from engine.setup_chat.timeline_auto import schedule_timeline_cascade
@@ -507,8 +501,6 @@ async def edit_character(
     race: str = "",
     hobbies: list[str] | None = None,
     verbal_tic: str = "",
-    portrait_visual_tags: str | None = None,
-    portrait_identity_tags: str | None = None,
     **extra: Any,
 ) -> str:
     """Change [an existing] character in cast. The main agent fills in the new settings; the verification is completed by args_schema. This tool only locates + checks for duplicates + places the order.
@@ -517,13 +509,14 @@ async def edit_character(
 
     副作用：写入成功后会清空该角色已有的角色档案（character_timeline delta 全部 stage + 各章 resolved
     archive.json + 内存缓存），因为它们是基于改动前的底层字段（physique/causal_anchors 等）推演出来的，
-    edit 之后就是脏数据。清空后需要重新调用 write_character_archive 逐章重新构造该角色的角色档案。"""
+    edit 之后就是脏数据。清空后需要重新调用 write_character_archive 逐章重新构造该角色的角色档案。
+
+    只想改立绘生成 prompt（外观提示词 / 身份锚定标签）时**不要用本工具**——用 set_portrait_prompt，
+    它只动那两个字段，不会清档案、不触发时间线重推演。本工具不再接受立绘 prompt 字段，原值会原样保留。"""
     _ok, msg, _char = await _edit_character_core(
         name, given_name, role, gender, causal_anchors, physique, clothing_color_palette,
         clothing_materials, clothing_signature_outfit, clothing_accessories, sliders,
         personality, identity_background, race, hobbies, verbal_tic,
-        portrait_visual_tags=portrait_visual_tags,
-        portrait_identity_tags=portrait_identity_tags,
         **extra,
     )
     return msg
@@ -1259,6 +1252,35 @@ def set_source_franchise(franchise: str) -> str:
     schedule_extract_visual_tags_all()
     shown = franchise.strip() or "（原创，已清空）"
     return f"已记录原作出处：{shown}。全体角色立绘提示词将在后台按新出处重新提取。"
+
+
+@tool(args_schema=SetPortraitPromptArgs)
+def set_portrait_prompt(
+    name: str, visual_tags: str | None = None, identity_tags: str | None = None,
+) -> str:
+    """直接改某角色的立绘生成 prompt——只动 portrait_visual_tags（外观提示词）/
+    portrait_identity_tags（身份锚定标签）两个字段，不碰角色底层字段。**不会**清空角色档案、
+    **不**触发时间线重推演、**不**触发后台重提取。改完后到 Cast 页点「重新生成立绘」按新 prompt 出图。
+    只传要改的那个；传空字符串 "" 表示清空该字段（下次生图会按体型/着装自动重提取外观词）。"""
+    from repositories import get_lore_repo
+
+    repo = get_lore_repo()
+    raw = next(
+        (c for c in repo.list_raw() if isinstance(c, dict) and _name_key(c) == name), None
+    )
+    if raw is None:
+        return f"未找到角色「{name}」。"
+
+    updated = dict(raw)
+    changed: list[str] = []
+    if visual_tags is not None:
+        updated["portrait_visual_tags"] = visual_tags.strip()
+        changed.append("外观提示词")
+    if identity_tags is not None:
+        updated["portrait_identity_tags"] = identity_tags.strip()
+        changed.append("身份锚定标签")
+    repo.upsert_character(updated)
+    return f"已更新角色「{name}」的立绘 {' + '.join(changed)}。到 Cast 页点「重新生成立绘」按新 prompt 出图。"
 
 
 @tool(args_schema=LoadSkillArgs)

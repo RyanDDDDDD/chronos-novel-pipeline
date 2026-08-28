@@ -853,10 +853,13 @@ async def test_edit_character_identity_tags_set_and_preserve(monkeypatch, tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_edit_character_manual_visual_tags_kept_unless_appearance_changed(monkeypatch, tmp_path):
+async def test_edit_character_never_reextracts_or_clobbers_portrait_tags(monkeypatch, tmp_path):
     from engine.setup_chat.tools import _edit_character_core
 
-    seed_lore([_full_char("甲")])
+    base = _full_char("甲")
+    base["portrait_visual_tags"] = "1girl, stored"
+    base["portrait_path"] = "甲-1.png"
+    seed_lore([base])
     monkeypatch.setattr(
         "engine.setup_chat.timeline_auto.schedule_timeline_cascade", lambda *a, **k: None,
     )
@@ -866,18 +869,14 @@ async def test_edit_character_manual_visual_tags_kept_unless_appearance_changed(
         lambda name: reextract.append(name),
     )
 
-    # only personality changes -> hand-typed tags are kept, no re-extract
-    args = _args("甲")
-    args["personality"] = "改过的人格"
-    ok, _, _ = await _edit_character_core(name="甲", portrait_visual_tags="1girl, hand typed", **args)
-    assert ok
-    assert next(c for c in lore_raw() if c["name"] == "甲")["portrait_visual_tags"] == "1girl, hand typed"
-    assert reextract == []
-
-    # a physique change makes hand-typed tags stale -> re-extract is scheduled
+    # a physique change: stored portrait_visual_tags + portrait_path carried forward verbatim,
+    # and no background re-extraction is scheduled.
     args = _args("甲")
     args["physique"] = {k: "changed" for k in args["physique"]}
-    ok, _, _ = await _edit_character_core(name="甲", portrait_visual_tags="1girl, also typed", **args)
+    ok, _, _ = await _edit_character_core(name="甲", **args)
     assert ok
-    assert reextract == ["甲"]
+    stored = next(c for c in lore_raw() if c["name"] == "甲")
+    assert stored["portrait_visual_tags"] == "1girl, stored"
+    assert stored["portrait_path"] == "甲-1.png"
+    assert reextract == []
     del tmp_path
