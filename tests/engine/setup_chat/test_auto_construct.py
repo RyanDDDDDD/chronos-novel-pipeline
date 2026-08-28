@@ -367,19 +367,13 @@ def _valid_world_json() -> str:
 
 @pytest.fixture(autouse=True)
 def _auto_review_gates_pass(monkeypatch):
-    """AUTO construct tests assume schema validation unless a test overrides gate_*.explicitly."""
+    """AUTO construct tests assume world review is advisory and schema validation is enforced."""
 
     async def _accept_world(_bible, *, novel_brief=None):
         return True, ""
 
-    async def _accept_character(_char, *, novel_brief=None):
-        return True, ""
-
     monkeypatch.setattr(
         "engine.setup_chat.setup_quality_review.gate_world_bible", _accept_world,
-    )
-    monkeypatch.setattr(
-        "engine.setup_chat.setup_quality_review.gate_character", _accept_character,
     )
 
 
@@ -413,49 +407,33 @@ async def test_build_world_schema_pass_does_not_run_inline_gate(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_draft_one_character_review_regen_fails_once_then_accepts(monkeypatch):
-    gate_calls = {"n": 0}
+async def test_draft_one_character_returns_after_schema_pass_without_quality_review():
     llm_calls: list[str] = []
 
     async def call_llm(_system: str, user: str) -> str:
         llm_calls.append(user)
         return _valid_character_json("甲")
 
-    async def fake_gate(_char, *, novel_brief=None):
-        gate_calls["n"] += 1
-        if gate_calls["n"] == 1:
-            return False, "设定质量评审未通过，未写入。\n\n【因果锚点】\n锚点不够具体"
-        return True, ""
-
-    monkeypatch.setattr("engine.setup_chat.setup_quality_review.gate_character", fake_gate)
-
     fields, error = await ac._draft_one_character(
         "brief", {"given_name": "甲", "role": "配角", "persona": "人设"}, "", call_llm, max_redo=0,
     )
     assert error is None
     assert fields is not None
-    assert gate_calls["n"] == 2
-    assert len(llm_calls) == 2
-    assert "锚点不够具体" in llm_calls[1]
+    assert len(llm_calls) == 1
 
 
 @pytest.mark.asyncio
-async def test_build_characters_review_regen_single_final_write(monkeypatch):
-    """Gate fail once in draft regen, then accept — only one disk write."""
-    gate_calls = {"n": 0}
+async def test_build_characters_schema_retry_has_single_final_write(monkeypatch):
+    """Schema retry still happens before the validated character is written once."""
     write_calls = {"n": 0}
+    llm_calls = {"n": 0}
 
     async def call_llm(_system: str, user: str) -> str:
+        llm_calls["n"] += 1
+        if llm_calls["n"] == 1:
+            return '{"gender": "女"}'
         name = user.split("姓名=", 1)[1].split("，")[0]
         return _valid_character_json(name)
-
-    async def fake_gate(_char, *, novel_brief=None):
-        gate_calls["n"] += 1
-        if gate_calls["n"] == 1:
-            return False, "设定质量评审未通过，未写入。\n\n【测试维度】\n请补全"
-        return True, ""
-
-    monkeypatch.setattr("engine.setup_chat.setup_quality_review.gate_character", fake_gate)
 
     async def fake_add_character(**kwargs):
         write_calls["n"] += 1
@@ -467,10 +445,10 @@ async def test_build_characters_review_regen_single_final_write(monkeypatch):
         "characters": [{"given_name": "甲", "role": "r", "persona": "p"}],
         "relationships": [],
     }
-    chars, errors = await ac.build_characters("brief", outline, call_llm, max_redo=0)
+    chars, errors = await ac.build_characters("brief", outline, call_llm, max_redo=1)
     assert errors == []
     assert len(chars) == 1
-    assert gate_calls["n"] == 2  # draft fail, draft pass (write bypasses gate via mock)
+    assert llm_calls["n"] == 2
     assert write_calls["n"] == 1
 
 

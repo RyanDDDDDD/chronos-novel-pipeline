@@ -167,25 +167,10 @@ async def test_all_hooks_disabled_accepts(monkeypatch):
     monkeypatch.setattr(
         "engine.modes.author_loop_skill_prefs.load_dialogue_prefs",
         lambda: {
-            "disabled_setup_review_hooks": list(
-                sqr.SETUP_WORLD_HOOK_NAMES + sqr.SETUP_CAST_HOOK_NAMES
-            ),
+            "disabled_setup_review_hooks": list(sqr.SETUP_WORLD_HOOK_NAMES),
         },
     )
     ok, msg = await sqr.gate_world_bible(_valid_bible())
-    assert ok is True
-    assert msg == ""
-
-
-@pytest.mark.asyncio
-async def test_gate_character_accepts_on_pass(monkeypatch):
-    async def _accept(*_a, **_k):
-        from engine.author_loop.self_review import SelfReviewVerdict
-
-        return SelfReviewVerdict("accept", 90.0, [("setup_cast_anchors", 85)], "")
-
-    monkeypatch.setattr(sqr, "run_cast_review", _accept)
-    ok, msg = await sqr.gate_character({"given_name": "测试"})
     assert ok is True
     assert msg == ""
 
@@ -248,14 +233,9 @@ async def test_refine_world_persists_without_inline_review_hint(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_add_character_core_persists_and_schedules_review(monkeypatch):
+async def test_add_character_core_persists_and_schedules_visual_tags(monkeypatch):
     seed_lore([_full_char("甲")])
-    scheduled = []
     visual_tags_scheduled = []
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.schedule_character_quality_review",
-        lambda name, **_kwargs: scheduled.append(name),
-    )
     monkeypatch.setattr(
         "engine.setup_chat.character_visual_tags.schedule_extract_visual_tags",
         lambda name: visual_tags_scheduled.append(name),
@@ -265,20 +245,15 @@ async def test_add_character_core_persists_and_schedules_review(monkeypatch):
     assert ok is True
     assert char is not None
     assert {c["name"] for c in lore_raw()} == {"甲", "乙"}
-    assert scheduled == ["乙"]
     assert visual_tags_scheduled == ["乙"]
 
 
 @pytest.mark.asyncio
-async def test_edit_character_core_persists_without_inline_gate(monkeypatch):
+async def test_edit_character_core_persists(monkeypatch):
     seed_lore([_full_char("甲")])
     monkeypatch.setattr(
         "engine.setup_chat.timeline_auto.schedule_timeline_cascade",
         lambda *a, **k: None,
-    )
-    monkeypatch.setattr(
-        "engine.setup_chat.character_background_review.schedule_character_quality_review",
-        lambda name, **_kwargs: None,
     )
 
     args = _character_args("甲")
@@ -292,5 +267,5 @@ async def test_edit_character_core_persists_without_inline_gate(monkeypatch):
 def test_active_hooks_is_importable_as_public_name():
     from engine.setup_chat.setup_quality_review import active_hooks
 
-    hooks = active_hooks(("setup_cast_anchors",))
+    hooks = active_hooks(("setup_world_completeness",))
     assert isinstance(hooks, list)

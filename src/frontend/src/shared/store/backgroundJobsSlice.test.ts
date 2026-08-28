@@ -53,14 +53,14 @@ describe('backgroundJobsSlice', () => {
 
   it('seeds active flags from a snapshot', () => {
     const state = backgroundJobsReducer(undefined, backgroundJobsSnapshotLoaded({
-      'novel-A': { skeleton_review: true, timeline_cascade: false, world_review: false, character_review: false },
-      'novel-B': { skeleton_review: false, timeline_cascade: false, world_review: false, character_review: false },
+      'novel-A': { skeleton_review: true, timeline_cascade: false, world_review: false },
+      'novel-B': { skeleton_review: false, timeline_cascade: false, world_review: false },
     }))
     expect(state.byNovelId['novel-A']).toEqual({
-      skeletonReviewActive: true, timelineCascadeActive: false, worldReviewActive: false, characterReviewActive: false,
+      skeletonReviewActive: true, timelineCascadeActive: false, worldReviewActive: false,
     })
     expect(state.byNovelId['novel-B']).toEqual({
-      skeletonReviewActive: false, timelineCascadeActive: false, worldReviewActive: false, characterReviewActive: false,
+      skeletonReviewActive: false, timelineCascadeActive: false, worldReviewActive: false,
     })
   })
 
@@ -69,7 +69,7 @@ describe('backgroundJobsSlice', () => {
       type: 'skeleton_review_started', novel_id: 'novel-A',
     }))
     const synced = backgroundJobsReducer(running, backgroundJobsSnapshotLoaded({
-      'novel-A': { skeleton_review: false, timeline_cascade: false, world_review: false, character_review: false },
+      'novel-A': { skeleton_review: false, timeline_cascade: false, world_review: false },
     }))
     expect(synced.byNovelId['novel-A'].skeletonReviewActive).toBe(false)
   })
@@ -85,35 +85,7 @@ describe('backgroundJobsSlice', () => {
   it('selectBackgroundJobs defaults to all-false for an unknown novel', () => {
     const rootState = { backgroundJobs: { byNovelId: {} } } as RootState
     expect(selectBackgroundJobs('unknown')(rootState)).toEqual({
-      skeletonReviewActive: false, timelineCascadeActive: false, worldReviewActive: false, characterReviewActive: false,
+      skeletonReviewActive: false, timelineCascadeActive: false, worldReviewActive: false,
     })
-  })
-
-  it('tracks character review independently', () => {
-    const state = backgroundJobsReducer(undefined, wsEventReceived({
-      type: 'character_review_started', novel_id: 'novel-A',
-    }))
-    expect(state.byNovelId['novel-A'].characterReviewActive).toBe(true)
-    expect(state.byNovelId['novel-A'].worldReviewActive).toBe(false)
-  })
-
-  it('clears character review on its done event', () => {
-    const running = backgroundJobsReducer(undefined, wsEventReceived({
-      type: 'character_review_started', novel_id: 'novel-A',
-    }))
-    const done = backgroundJobsReducer(running, wsEventReceived({
-      type: 'character_review_done', novel_id: 'novel-A',
-    }))
-    expect(done.byNovelId['novel-A'].characterReviewActive).toBe(false)
-  })
-
-  it('seeds character review from a snapshot', () => {
-    const state = backgroundJobsReducer(undefined, backgroundJobsSnapshotLoaded({
-      'novel-A': {
-        skeleton_review: false, timeline_cascade: false, world_review: false,
-        character_review: true,
-      },
-    }))
-    expect(state.byNovelId['novel-A'].characterReviewActive).toBe(true)
   })
 })

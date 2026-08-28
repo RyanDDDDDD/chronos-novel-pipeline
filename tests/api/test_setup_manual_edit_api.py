@@ -32,9 +32,7 @@ def _disable_setup_quality_review(monkeypatch):
 
     def _patched() -> dict:
         prefs = real()
-        prefs["disabled_setup_review_hooks"] = list(
-            sqr.SETUP_WORLD_HOOK_NAMES + sqr.SETUP_CAST_HOOK_NAMES
-        )
+        prefs["disabled_setup_review_hooks"] = list(sqr.SETUP_WORLD_HOOK_NAMES)
         return prefs
 
     monkeypatch.setattr(prefs_mod, "load_dialogue_prefs", _patched)

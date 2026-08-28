@@ -1451,7 +1451,7 @@ Receive a user message and run a setting dialog; the output is broadcast via ws.
         """Snapshot of which novels currently have a running background task, keyed by
         novel_id -- for the frontend's novel-list status dot to initialize from on mount
         (lifecycle WS events only carry future transitions, not "what's already running")."""
-        from engine.setup_chat import character_background_review, skeleton_pipeline
+        from engine.setup_chat import skeleton_pipeline
         from engine.setup_chat.timeline_auto import is_cascade_active
         from engine.setup_chat.world_background_review import is_world_review_active
 
@@ -1466,7 +1466,6 @@ Receive a user message and run a setting dialog; the output is broadcast via ws.
                 "skeleton_review": skeleton_pipeline.any_review_active(n["id"]),
                 "timeline_cascade": is_cascade_active(n["id"]),
                 "world_review": is_world_review_active(n["id"]),
-                "character_review": character_background_review.any_review_active(n["id"]),
             }
             for n in list_novels()
         }

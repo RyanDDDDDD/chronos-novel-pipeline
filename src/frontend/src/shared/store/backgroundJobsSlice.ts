@@ -6,20 +6,17 @@ interface NovelJobFlags {
   skeletonReviewActive: boolean
   timelineCascadeActive: boolean
   worldReviewActive: boolean
-  characterReviewActive: boolean
 }
 
 const START_TYPES: Record<string, keyof NovelJobFlags> = {
   skeleton_review_started: 'skeletonReviewActive',
   timeline_cascade_started: 'timelineCascadeActive',
   world_review_started: 'worldReviewActive',
-  character_review_started: 'characterReviewActive',
 }
 const DONE_TYPES: Record<string, keyof NovelJobFlags> = {
   skeleton_review_done: 'skeletonReviewActive',
   timeline_cascade_done: 'timelineCascadeActive',
   world_review_done: 'worldReviewActive',
-  character_review_done: 'characterReviewActive',
 }
 // restarted events don't change the flag -- it was already true and stays true through a
 // cancel-then-restart; they exist purely for callers that want to react to the transition
@@ -38,7 +35,6 @@ const DEFAULT_FLAGS: NovelJobFlags = {
   skeletonReviewActive: false,
   timelineCascadeActive: false,
   worldReviewActive: false,
-  characterReviewActive: false,
 }
 
 function ensure(state: BackgroundJobsState, novelId: string): NovelJobFlags {
@@ -46,7 +42,6 @@ function ensure(state: BackgroundJobsState, novelId: string): NovelJobFlags {
     skeletonReviewActive: false,
     timelineCascadeActive: false,
     worldReviewActive: false,
-    characterReviewActive: false,
   }
 }
 
@@ -64,7 +59,6 @@ const backgroundJobsSlice = createSlice({
           skeleton_review: boolean
           timeline_cascade: boolean
           world_review: boolean
-          character_review: boolean
         }>
       },
     ) => {
@@ -73,7 +67,6 @@ const backgroundJobsSlice = createSlice({
         entry.skeletonReviewActive = flags.skeleton_review
         entry.timelineCascadeActive = flags.timeline_cascade
         entry.worldReviewActive = flags.world_review
-        entry.characterReviewActive = flags.character_review
       }
     },
   },

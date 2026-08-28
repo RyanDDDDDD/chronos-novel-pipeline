@@ -40,9 +40,7 @@ def _low_stage_count_floor(monkeypatch):
         prefs["target_words"] = 350
         from engine.setup_chat import setup_quality_review as sqr
 
-        prefs["disabled_setup_review_hooks"] = list(
-            sqr.SETUP_WORLD_HOOK_NAMES + sqr.SETUP_CAST_HOOK_NAMES
-        )
+        prefs["disabled_setup_review_hooks"] = list(sqr.SETUP_WORLD_HOOK_NAMES)
         return prefs
 
     monkeypatch.setattr(prefs_mod, "load_dialogue_prefs", _patched)

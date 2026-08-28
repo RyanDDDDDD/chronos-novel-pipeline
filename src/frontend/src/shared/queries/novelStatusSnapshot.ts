@@ -9,7 +9,6 @@ export type NovelStatusSnapshot = Record<string, {
   skeleton_review: boolean
   timeline_cascade: boolean
   world_review: boolean
-  character_review: boolean
 }>
 
 /** Pulls backend SSOT for per-novel run + background-job flags into Redux. Used on app mount
