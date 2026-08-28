@@ -116,6 +116,7 @@ def test_copy_novel_from_non_active_preserves_lore(novels_root):
     )
     conn.commit()
     nv.set_prose_style("book-b", "cold-restrained", "冷")
+    nv.set_source_franchise("book-b", " Blue Archive ")
     (other / "setup_chat").mkdir()
     (other / "setup_chat" / "checkpoint.sqlite").write_text("x", encoding="utf-8")
     nid = nv.copy_novel("book-b", "乙副本")
@@ -123,6 +124,7 @@ def test_copy_novel_from_non_active_preserves_lore(novels_root):
     assert json.loads((dst / "lore" / "character_lore_library.json").read_text(encoding="utf-8")) == [{"name": "乙"}]
     assert nv.get_novel_name(nid) == "乙副本"
     assert nv.get_prose_style(nid) == {"preset": "cold-restrained", "custom_addendum": "冷"}
+    assert nv.get_source_franchise(nid) == "Blue Archive"
     assert not (dst / "setup_chat").exists()
 
 
@@ -277,6 +279,21 @@ def test_set_get_prose_style_roundtrip(novels_root):
     _seed(novels_root)
     nv.set_prose_style("default", "cold-restrained", "更冷")
     assert nv.get_prose_style("default") == {"preset": "cold-restrained", "custom_addendum": "更冷"}
+
+
+def test_source_franchise_roundtrip(novels_root):
+    _seed(novels_root)
+    assert nv.get_source_franchise("default") == ""
+    nv.set_source_franchise("default", "  Blue Archive  ")
+    assert nv.get_source_franchise("default") == "Blue Archive"
+    nv.set_source_franchise("default", "")
+    assert nv.get_source_franchise("default") == ""
+
+
+def test_set_source_franchise_unknown_novel_raises(novels_root):
+    _seed(novels_root)
+    with pytest.raises(ValueError):
+        nv.set_source_franchise("no-such-novel", "X")
 
 
 def test_get_sandbox_dialogue_turn_count_defaults_to_none(novels_root):

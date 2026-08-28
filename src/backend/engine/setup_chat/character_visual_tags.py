@@ -19,6 +19,21 @@ def schedule_extract_visual_tags(name: str) -> None:
     )
 
 
+def schedule_extract_visual_tags_all() -> None:
+    """Re-enqueue visual-tag extraction for every current cast member -- called after the
+    novel's source_franchise changes, since that shifts which identity tag (if any) the
+    extractor should lead with."""
+    from repositories import get_lore_repo
+
+    from engine.setup_chat.tools import _name_key
+
+    for character in get_lore_repo().list_raw():
+        if isinstance(character, dict):
+            name = _name_key(character)
+            if name:
+                schedule_extract_visual_tags(name)
+
+
 async def _run_extract_visual_tags(novel_id: str, name: str) -> None:
     from media.portrait.visual_tags import extract_and_persist_visual_tags
     from repositories import get_lore_repo

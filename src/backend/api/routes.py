@@ -1601,6 +1601,34 @@ Receive a user message and run a setting dialog; the output is broadcast via ws.
             )
         return {"ok": True}
 
+    @app.get("/api/novels/{nid}/source-franchise")
+    async def get_source_franchise_endpoint(nid: str) -> dict:
+        from api.services.novels import get_source_franchise
+
+        return {"franchise": get_source_franchise(nid)}
+
+    @app.put("/api/novels/{nid}/source-franchise")
+    async def set_source_franchise_endpoint(nid: str, body: dict):
+        from fastapi import Response
+
+        from api.services.novels import set_source_franchise
+
+        franchise = str((body or {}).get("franchise", ""))
+        try:
+            set_source_franchise(nid, franchise)
+        except ValueError as e:
+            return Response(
+                content=json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False),
+                status_code=404,
+                media_type="application/json",
+            )
+        # A franchise change shifts which identity tag (if any) the extractor should lead
+        # with, so every cast member's prompt cache needs recomputing.
+        from engine.setup_chat.character_visual_tags import schedule_extract_visual_tags_all
+
+        schedule_extract_visual_tags_all()
+        return {"ok": True, "franchise": franchise.strip()}
+
     @app.get("/api/state-derive-fields")
     async def list_state_derive_fields_endpoint() -> dict:
         from context.content_packs import state_derive_fields_api

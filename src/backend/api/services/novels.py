@@ -233,6 +233,9 @@ def copy_novel(source_id: str, name: str) -> str:
     _purge_copied_runtime_data(nid)
     _insert_registry_row(nid, name)
     settings: dict = {"prose_style": src_prose}
+    src_franchise = src_settings.get("source_franchise")
+    if isinstance(src_franchise, str) and src_franchise.strip():
+        settings["source_franchise"] = src_franchise.strip()
     sandbox_count = src_settings.get("sandbox_dialogue_turn_count")
     if isinstance(sandbox_count, int) and not isinstance(sandbox_count, bool):
         settings["sandbox_dialogue_turn_count"] = sandbox_count
@@ -298,6 +301,20 @@ def set_prose_style(nid: str, preset: str, custom_addendum: str) -> None:
     if _registry_row(nid) is None:
         raise ValueError(f"小说不存在: {nid}")
     _merge_novel_settings(nid, {"prose_style": {"preset": preset, "custom_addendum": custom_addendum}})
+
+
+def get_source_franchise(nid: str) -> str:
+    """The existing work this novel is fan fiction of (e.g. 'Blue Archive'); '' = original work.
+    Fed to the portrait visual-tag extractor so it can lead with the danbooru character tag."""
+    value = _read_novel_settings(nid).get("source_franchise")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def set_source_franchise(nid: str, value: str) -> None:
+    """Merge-write source_franchise into the novel_settings doc."""
+    if _registry_row(nid) is None:
+        raise ValueError(f"小说不存在: {nid}")
+    _merge_novel_settings(nid, {"source_franchise": (value or "").strip()})
 
 
 def get_sandbox_dialogue_turn_count(nid: str) -> int | None:
