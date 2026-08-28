@@ -87,6 +87,29 @@ def test_render_character_chat_shows_verbal_tic():
     assert "口癖：句尾爱加「呢」，紧张时会重复最后两个字" in out
 
 
+def test_render_character_chat_shows_portrait_tags_non_brief_only():
+    from engine.setup.chat_summary import render_character_chat
+
+    char = {
+        "given_name": "白洲梓", "role": "主角", "gender": "female",
+        "portrait_identity_tags": "shiroko (blue archive), blue archive",
+        "portrait_visual_tags": "1girl, blue hair",
+    }
+    full = render_character_chat(char, brief=False)
+    assert "形象锚定（立绘）：shiroko (blue archive), blue archive" in full
+    assert "生图提示词（立绘外观）：1girl, blue hair" in full
+
+    assert "形象锚定" not in render_character_chat(char, brief=True)
+
+
+def test_render_character_chat_omits_empty_portrait_tags():
+    from engine.setup.chat_summary import render_character_chat
+
+    out = render_character_chat({"given_name": "甲", "role": "x", "gender": "female"})
+    assert "形象锚定" not in out
+    assert "生图提示词" not in out
+
+
 def test_render_character_chat_omits_empty_verbal_tic():
     from engine.setup.chat_summary import render_character_chat
 

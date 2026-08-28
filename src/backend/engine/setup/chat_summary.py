@@ -132,6 +132,12 @@ Single cast role → natural language summary."""
     if verbal_tic:
         lines.append(f"口癖：{verbal_tic}")
     lines.extend(render_custom_fields_block(char))
+    identity_tags = str(char.get("portrait_identity_tags") or "").strip()
+    if identity_tags:
+        lines.append(f"形象锚定（立绘）：{identity_tags}")
+    visual_tags = str(char.get("portrait_visual_tags") or "").strip()
+    if visual_tags:
+        lines.append(f"生图提示词（立绘外观）：{visual_tags}")
     return "\n".join(lines)
 
 
