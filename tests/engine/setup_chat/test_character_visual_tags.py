@@ -23,7 +23,7 @@ def test_schedule_extract_visual_tags_registers_dedup_once_event(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_run_extract_visual_tags_persists_then_chains_portrait_job(monkeypatch):
+async def test_run_extract_visual_tags_persists_without_triggering_portrait_job(monkeypatch):
     from engine.setup_chat import character_visual_tags as cvt
 
     class _FakeRepo:
@@ -51,7 +51,7 @@ async def test_run_extract_visual_tags_persists_then_chains_portrait_job(monkeyp
     await cvt._run_extract_visual_tags("n", "甲")
 
     assert extract_calls == [("n", "甲", "甲")]
-    assert schedule_calls == ["甲"]
+    assert schedule_calls == []  # portrait generation is manual-only now
 
 
 @pytest.mark.asyncio

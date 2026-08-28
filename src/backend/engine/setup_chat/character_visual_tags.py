@@ -1,9 +1,8 @@
-"""Extracts + persists a character's visual tag cache, then chains into portrait
-generation. Kept as its own scheduled job (not inlined into add_character) so it
-shares the debounced SCHEDULER dedup mechanism the rest of this module family uses --
-but always chains forward into schedule_character_portrait_generation on completion
-rather than being fired in parallel with it, so there is no ordering race between the
-two jobs."""
+"""Extracts + persists a character's visual tag cache on add_character / edit_character.
+Kept as its own debounced SCHEDULER job (shares the dedup mechanism the rest of this module
+family uses). Portrait generation is NOT chained here -- since 2026-08 it is manual-only
+(the user clicks "regenerate" on the cast card -> POST /api/character-portrait/generate).
+This job still runs on every appearance edit so that manual regen has a warm prompt cache."""
 from __future__ import annotations
 
 from utils.paths import use_novel
@@ -24,9 +23,6 @@ async def _run_extract_visual_tags(novel_id: str, name: str) -> None:
     from media.portrait.visual_tags import extract_and_persist_visual_tags
     from repositories import get_lore_repo
 
-    from engine.setup_chat.character_portrait_generation import (
-        schedule_character_portrait_generation,
-    )
     from engine.setup_chat.tools import _name_key
 
     with use_novel(novel_id):
@@ -36,4 +32,5 @@ async def _run_extract_visual_tags(novel_id: str, name: str) -> None:
         return  # 提取排队期间角色被删了，静默结束（跟 _run_portrait_generation 现有策略一致）
 
     await extract_and_persist_visual_tags(novel_id, name, char)
-    schedule_character_portrait_generation(name)
+    # No schedule_character_portrait_generation(name) here -- portrait generation is
+    # manual-only (see module docstring).
