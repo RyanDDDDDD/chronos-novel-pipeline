@@ -89,4 +89,3 @@ disallow_untyped_defs = false
 ignore_missing_imports = true
 mypy_path = "src/backend"
 explicit_package_bases = true
-plugins = ["pydantic.mypy"]
