@@ -1,7 +1,14 @@
 """initial novel schema
 
+This is the schema as it existed before the optimistic-concurrency `version`
+columns were added (i.e. what sqlite_store._DDL originally created + what the
+JSON->SQLite migration produced). The `version` columns land in 0002 -- split
+this way so the ~5 legacy dbs that have the tables but never got the runtime
+_ensure_version_columns() ALTER can be stamped at 0001 and then upgraded, rather
+than mis-stamped at head with a column still missing.
+
 Revision ID: 0001_initial_novel_schema
-Revises: 
+Revises:
 Create Date: 2026-08-28 06:38:34.262597
 
 """
@@ -23,7 +30,6 @@ def upgrade() -> None:
     op.create_table('documents',
     sa.Column('doc_key', sa.String(), nullable=False),
     sa.Column('data_json', repositories.db_types.JSONText(), nullable=False),
-    sa.Column('version', sa.Integer(), server_default='1', nullable=False),
     sa.PrimaryKeyConstraint('doc_key')
     )
     op.create_table('lore_characters',
@@ -31,7 +37,6 @@ def upgrade() -> None:
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('data_json', repositories.db_types.JSONText(), nullable=False),
     sa.Column('seq', sa.Integer(), nullable=False),
-    sa.Column('version', sa.Integer(), server_default='1', nullable=False),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
     )
@@ -39,7 +44,6 @@ def upgrade() -> None:
     sa.Column('chapter', sa.Integer(), autoincrement=False, nullable=False),
     sa.Column('data_json', repositories.db_types.JSONText(), nullable=False),
     sa.Column('seq', sa.Integer(), nullable=False),
-    sa.Column('version', sa.Integer(), server_default='1', nullable=False),
     sa.PrimaryKeyConstraint('chapter')
     )
     op.create_table('sandbox_events',
