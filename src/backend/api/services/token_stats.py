@@ -1,7 +1,7 @@
 """Dashboard aggregation: Scan per-novel token_ledger doc → Each novel × subsystem × chapter + total."""
 from __future__ import annotations
 
-from repositories.registry_store import get_registry_connection
+from repositories import registry_store
 
 from api.services import novels as novels_svc
 from api.services.token_ledger import load_ledger
@@ -34,10 +34,7 @@ def aggregate_token_stats() -> dict:
     novels_out: list[dict] = []
     grand = _zero()
     try:
-        rows = get_registry_connection().execute(
-            "SELECT id FROM novels WHERE deleted_at IS NULL ORDER BY id",
-        ).fetchall()
-        novel_ids = [str(row[0]) for row in rows if row and row[0]]
+        novel_ids = registry_store.visible_ids_sorted()
     except Exception:
         novel_ids = []
     for nid in novel_ids:

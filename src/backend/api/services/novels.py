@@ -16,8 +16,8 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from loguru import logger
-from repositories.registry_store import get_registry_connection
-from repositories.sqlite_store import SqliteStore, get_connection
+from repositories import registry_store
+from repositories.sqlite_store import SqliteStore
 from utils.paths import (
     active_novel_id,
     novel_dir,
@@ -65,8 +65,7 @@ def _merge_novel_settings(nid: str, patch: dict) -> dict:
 
 def _existing_ids() -> list[str]:
     try:
-        rows = get_registry_connection().execute("SELECT id FROM novels").fetchall()
-        return [str(row[0]) for row in rows if row and row[0]]
+        return registry_store.existing_ids()
     except Exception:
         return []
 
@@ -74,24 +73,15 @@ def _existing_ids() -> list[str]:
 def _is_deleted(nid: str) -> bool:
     """Deleted: registry row has non-null deleted_at."""
     try:
-        row = get_registry_connection().execute(
-            "SELECT deleted_at FROM novels WHERE id = ?",
-            (nid,),
-        ).fetchone()
-        return row is not None and row[0] is not None
+        return registry_store.is_deleted(nid)
     except Exception:
         return False
 
 
 def _registry_row(nid: str) -> tuple[str, str] | None:
     try:
-        row = get_registry_connection().execute(
-            "SELECT id, name FROM novels WHERE id = ?",
-            (nid,),
-        ).fetchone()
-        if row is None:
-            return None
-        return str(row[0]), str(row[1])
+        row = registry_store.novel_row(nid)
+        return (row.id, row.name) if row is not None else None
     except Exception:
         return None
 
@@ -106,10 +96,9 @@ def _resolve_trash_dest(nid: str) -> str:
 
 def move_novel_to_trash(nid: str) -> None:
     """Move the novel folder in the root directory into .trash (idempotent: skip if the source does not exist)."""
-    from repositories.sqlite_store import close_connection
+    from repositories.engine import dispose_engine
 
-    db_path = os.path.join(novel_dir(nid), "chronos.sqlite3")
-    close_connection(db_path)
+    dispose_engine(nid)
     src = novel_dir(nid)
     if not os.path.isdir(src):
         return
@@ -162,13 +151,11 @@ def list_novels() -> list[dict]:
     active = active_novel_id()
     out: list[dict] = []
     try:
-        rows = get_registry_connection().execute(
-            "SELECT id, name, pinned_at FROM novels WHERE deleted_at IS NULL "
-            "ORDER BY (pinned_at IS NULL) ASC, pinned_at DESC, name ASC",
-        ).fetchall()
-        for row in rows:
-            nid, name, pinned_at = str(row[0]), str(row[1]), row[2]
-            out.append({"id": nid, "name": name or nid, "active": nid == active, "pinned": pinned_at is not None})
+        for nid, name, pinned_at in registry_store.visible_ordered():
+            out.append({
+                "id": nid, "name": name or nid,
+                "active": nid == active, "pinned": pinned_at is not None,
+            })
     except Exception:
         pass
     return out
@@ -180,12 +167,7 @@ def set_novel_pinned(nid: str, pinned: bool) -> None:
     again refreshes it to the top rather than being a no-op."""
     if _registry_row(nid) is None:
         raise ValueError(f"小说不存在: {nid}")
-    conn = get_registry_connection()
-    conn.execute(
-        "UPDATE novels SET pinned_at = ? WHERE id = ?",
-        (_now_iso() if pinned else None, nid),
-    )
-    conn.commit()
+    registry_store.set_pinned(nid, _now_iso() if pinned else None)
 
 
 def set_active(nid: str) -> None:
@@ -193,15 +175,7 @@ def set_active(nid: str) -> None:
         raise ValueError(f"小说不存在: {nid}")
     if _is_deleted(nid):
         raise ValueError(f"小说已删除: {nid}")
-    conn = get_registry_connection()
-    conn.execute("BEGIN")
-    try:
-        conn.execute("UPDATE novels SET is_active = 0")
-        conn.execute("UPDATE novels SET is_active = 1 WHERE id = ?", (nid,))
-        conn.commit()
-    except BaseException:
-        conn.rollback()
-        raise
+    registry_store.set_active(nid)
 
 
 def _copy_novel_contents(src: str, dst: str) -> None:
@@ -223,24 +197,20 @@ def _purge_copied_runtime_data(nid: str) -> None:
     db_path = os.path.join(novel_dir(nid), "chronos.sqlite3")
     if not os.path.isfile(db_path):
         return
-    conn = get_connection(db_path)
-    conn.execute("DELETE FROM session_messages")
-    conn.execute("DELETE FROM sandbox_events")
-    placeholders = ",".join("?" * len(_COPY_PURGE_DOC_KEYS))
-    conn.execute(
-        f"DELETE FROM documents WHERE doc_key IN ({placeholders})",
-        _COPY_PURGE_DOC_KEYS,
-    )
-    conn.commit()
+    from repositories.engine import engine_for_novel
+    from repositories.models import Document, SandboxEvent, SessionMessage
+    from sqlalchemy import delete
+    from sqlmodel import Session, col
+
+    with Session(engine_for_novel(nid)) as s:
+        s.exec(delete(SessionMessage))
+        s.exec(delete(SandboxEvent))
+        s.exec(delete(Document).where(col(Document.doc_key).in_(_COPY_PURGE_DOC_KEYS)))
+        s.commit()
 
 
 def _insert_registry_row(nid: str, name: str, *, is_active: bool = False) -> None:
-    conn = get_registry_connection()
-    conn.execute(
-        "INSERT INTO novels (id, name, created_at, is_active) VALUES (?, ?, ?, ?)",
-        (nid, name, _now_iso(), 1 if is_active else 0),
-    )
-    conn.commit()
+    registry_store.insert_novel(nid, name, _now_iso(), is_active=is_active)
 
 
 def copy_novel(source_id: str, name: str) -> str:
@@ -288,9 +258,7 @@ def rename_novel(nid: str, name: str) -> None:
     """Only the registry display name changes; directory id remains unchanged."""
     if _registry_row(nid) is None:
         raise ValueError(f"小说不存在: {nid}")
-    conn = get_registry_connection()
-    conn.execute("UPDATE novels SET name = ? WHERE id = ?", (name, nid))
-    conn.commit()
+    registry_store.rename_novel(nid, name)
 
 
 def get_novel_name(nid: str) -> str:
@@ -362,12 +330,7 @@ def delete_novel(nid: str, *, release_handles: ReleaseHandles | None = None) -> 
         raise ValueError("至少保留一部小说")
 
     if not already_marked:
-        conn = get_registry_connection()
-        conn.execute(
-            "UPDATE novels SET deleted_at = ? WHERE id = ?",
-            (_now_iso(), nid),
-        )
-        conn.commit()
+        registry_store.mark_deleted(nid, _now_iso())
         _heal_active()
 
     _schedule_trash_move(nid, release_handles or _noop_release)
@@ -377,10 +340,7 @@ def _heal_active() -> None:
     """When active points to a novel that does not exist, has been deleted, or lacks a physical
     directory, correct it to the first visible novel."""
     try:
-        rows = get_registry_connection().execute(
-            "SELECT id FROM novels WHERE deleted_at IS NULL ORDER BY id",
-        ).fetchall()
-        ids = [str(row[0]) for row in rows if row and row[0]]
+        ids = registry_store.visible_ids_sorted()
     except Exception:
         ids = []
     active = active_novel_id()
@@ -407,10 +367,5 @@ def ensure_initialized() -> None:
         return
     dst = novel_dir("default")
     os.makedirs(os.path.join(dst, "chapters"), exist_ok=True)
-    conn = get_registry_connection()
-    conn.execute(
-        "INSERT INTO novels (id, name, created_at, is_active) VALUES (?, ?, ?, ?)",
-        ("default", "默认", _now_iso(), 1),
-    )
-    conn.commit()
+    registry_store.insert_novel("default", "默认", _now_iso(), is_active=True)
     _write_default_novel_settings("default")

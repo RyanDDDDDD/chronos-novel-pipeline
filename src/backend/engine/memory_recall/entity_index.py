@@ -240,13 +240,10 @@ async def restore_persisted_automata() -> None:
 
 
 def _restore_persisted_automata_sync() -> None:
-    from repositories.registry_store import get_registry_connection
+    from repositories.registry_store import visible_ids_sorted
 
     try:
-        rows = get_registry_connection().execute(
-            "SELECT id FROM novels WHERE deleted_at IS NULL",
-        ).fetchall()
-        novel_ids = [str(row[0]) for row in rows if row and row[0]]
+        novel_ids = visible_ids_sorted()
     except Exception:
         return
     for novel_id in novel_ids:
