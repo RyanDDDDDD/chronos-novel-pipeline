@@ -46,6 +46,8 @@ async def test_generate_returns_image_bytes(monkeypatch):
     assert result == b"PNGDATA"
     assert captured["submit_json"]["request"]["prompt"] == "1girl, silver hair, red eyes"
     assert captured["submit_json"]["request"]["model_name"] == "test-model"
+    assert captured["submit_json"]["request"]["width"] == 832
+    assert captured["submit_json"]["request"]["height"] == 1216
     assert captured["submit_headers"]["Authorization"] == "Bearer test-key"
     assert captured["poll_params"]["task_id"] == "task-1"
     assert captured["poll_headers"]["Authorization"] == "Bearer test-key"

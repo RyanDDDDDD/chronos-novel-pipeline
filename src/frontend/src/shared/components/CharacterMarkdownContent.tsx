@@ -79,7 +79,7 @@ function buildComponents(highlightedFields?: Set<string>): Components {
     ),
     img: ({ alt, src }) => (
       <div className="my-3 flex justify-center">
-        <div className="w-40 aspect-[3/4] rounded-md overflow-hidden border border-[var(--c-border)] bg-[var(--c-surface-muted)]">
+        <div className="w-40 aspect-[2/3] rounded-md overflow-hidden border border-[var(--c-border)] bg-[var(--c-surface-muted)]">
           <img src={src} alt={alt ?? ''} className="h-full w-full object-cover" />
         </div>
       </div>
