@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 
 import httpx
 import pytest
@@ -15,11 +16,7 @@ def _http_error(status: int) -> httpx.HTTPStatusError:
     )
 
 
-async def _noop_sleep(_s: float) -> None:
-    return None
-
-
-def _make_sleep_recorder(slept: list[float]):
+def _make_sleep_recorder(slept: list[float]) -> Callable[[float], Awaitable[None]]:
     async def record_sleep(s: float) -> None:
         slept.append(s)
 

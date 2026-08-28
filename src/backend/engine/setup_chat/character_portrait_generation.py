@@ -35,6 +35,21 @@ def schedule_character_portrait_generation(name: str) -> None:
     SCHEDULER.schedule_once(
         f"character-portrait:{novel_id}:{name}", 0.0,
         lambda: _run_portrait_generation(novel_id, name), dedup=True,
+        on_timeout=lambda: _on_portrait_generation_timeout(novel_id, name),
+    )
+
+
+async def _on_portrait_generation_timeout(novel_id: str, name: str) -> None:
+    """Queueing behind media.portrait.gate.IMAGE_GEN_GATE (process-wide serial, plus 429
+    backoff) can push one portrait past the scheduler's 180s watchdog. The watchdog cancels
+    the job, and the resulting CancelledError deliberately escapes _run_portrait_generation's
+    `except Exception`, so nothing else would ever emit the terminal event -- without this
+    hook the Cast card stays in "generating" until a reload."""
+    from api.routes import _hub_instance
+
+    await _hub_instance().broadcast(
+        {"type": "portrait_generation_done", "novel_id": novel_id, "character": name,
+         "error": "立绘生成超时（排队过久或生成过慢），请稍后重试"}
     )
 
 
