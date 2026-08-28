@@ -538,6 +538,35 @@ describe('ServiceConfigPage 自定义模型表格', () => {
     })
   })
 
+  it('切到 NovelAI 后直接保存（不动下拉）→ 显示名自动填成默认模型的友好名', async () => {
+    let savedConfig: { config: { llm: { custom_models: { model: string; label: string; service?: string }[] } } } | null = null
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config' && (!init || init.method === undefined)) {
+        return { ok: true, json: async () => ({ config: { llm: { custom_models: [] } } }) }
+      }
+      if (url === '/api/config' && init?.method === 'PUT') {
+        savedConfig = JSON.parse(String(init.body))
+        return { ok: true, json: async () => savedConfig }
+      }
+      if (url === '/api/llm/catalog') return { ok: true, json: async () => ({ cloud_models: [] }) }
+      if (url === '/api/image-gen/novita-models') return { ok: true, json: async () => ({ models: [], base_models: {} }) }
+      return { ok: true, json: async () => ({}) }
+    }))
+
+    renderPage()
+    fireEvent.click(await screen.findByText('生图模型'))
+    fireEvent.click(await screen.findByRole('button', { name: '添加生图模型' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'NovelAI' }))
+    fireEvent.change(screen.getByPlaceholderText('NovelAI 持久 API Token'), { target: { value: 'nai-token' } })
+    // NOTE: the model <select> is left on its pre-selected default -- no fireEvent.change.
+    fireEvent.click(screen.getByRole('button', { name: '保存此模型' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(savedConfig).not.toBeNull())
+
+    const entry = savedConfig!.config.llm.custom_models.find(m => m.model === 'nai-diffusion-5-full')
+    expect(entry?.label).toBe('NAI Diffusion V5 Full')
+  })
+
   it('删除一条自定义模型后从列表消失', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/config') {
