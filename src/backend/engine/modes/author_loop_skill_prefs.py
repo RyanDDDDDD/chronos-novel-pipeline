@@ -47,6 +47,10 @@ _IMPORT_LLM_PARAM_NODE_IDS = frozenset({
     "auto_build_setup", "auto_expand_skeleton", "timeline_derive", "setup_quality_review",
     "skeleton_writer", "beat_dialogue_draft", "prose_style_extraction",
     "incremental_relationship",
+    # character_portrait carries only model_ref (image-gen entry binding, not an LLM
+    # sampling call) -- ImageGenNodeParamsPanel writes it here; without the whitelist entry
+    # _clean_llm_params silently drops it and the binding never persists.
+    "character_portrait",
 }) | _FIX_AGENT_NODE_IDS
 _STYLE_GUARD_IMPORT_LLM_PARAM_NODE_IDS: frozenset[str] = frozenset()
 _LLM_PARAM_RANGES: dict[str, tuple[float, float]] = {
