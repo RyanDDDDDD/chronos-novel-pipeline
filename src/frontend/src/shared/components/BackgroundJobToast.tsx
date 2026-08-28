@@ -122,13 +122,13 @@ function JobRow({ active, label }: { active: boolean; label: string }) {
 }
 
 /** Persistent bottom-right indicator for long-running background jobs (skeleton review,
- * timeline archive cascade, world quality review, character quality review) -- deliberately
+ * timeline archive cascade, world quality review) -- deliberately
  * generic (no chapter/detail): the user only needs to know "is something still running". Each
  * row auto-collapses to an icon after a few seconds; see JobRow for the expand/collapse
  * lifecycle. */
 export default function BackgroundJobToast() {
   const novelId = useActiveNovelId()
-  const { skeletonReviewActive, timelineCascadeActive, worldReviewActive, characterReviewActive } =
+  const { skeletonReviewActive, timelineCascadeActive, worldReviewActive } =
     useSelector(selectBackgroundJobs(novelId))
 
   return (
@@ -136,7 +136,6 @@ export default function BackgroundJobToast() {
       <JobRow active={skeletonReviewActive} label="章节审查中…" />
       <JobRow active={timelineCascadeActive} label="角色档案推演中…" />
       <JobRow active={worldReviewActive} label="世界观审查中…" />
-      <JobRow active={characterReviewActive} label="人物设定审查中…" />
     </div>
   )
 }

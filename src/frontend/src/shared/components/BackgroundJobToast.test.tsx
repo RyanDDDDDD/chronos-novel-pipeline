@@ -17,7 +17,7 @@ describe('BackgroundJobToast', () => {
       activeNovelId: 'novel-A',
       preloadedState: { backgroundJobs: { byNovelId: {} } },
     })
-    expect(screen.queryByText(/章节审查中|角色档案推演中|世界观审查中|人物设定审查/)).toBeNull()
+    expect(screen.queryByText(/章节审查中|角色档案推演中|世界观审查中/)).toBeNull()
   })
 
   it('shows the skeleton review message when active for the current novel', () => {
@@ -25,7 +25,7 @@ describe('BackgroundJobToast', () => {
       activeNovelId: 'novel-A',
       preloadedState: {
         backgroundJobs: { byNovelId: { 'novel-A': {
-          skeletonReviewActive: true, timelineCascadeActive: false, worldReviewActive: false, characterReviewActive: false,
+          skeletonReviewActive: true, timelineCascadeActive: false, worldReviewActive: false,
         } } },
       },
     })
@@ -68,18 +68,6 @@ describe('BackgroundJobToast', () => {
     })
     expect(screen.queryByText(/章节审查中/)).toBeNull()
   })
-
-  it('renders the character review row when active', () => {
-    renderWithProviders(<BackgroundJobToast />, {
-      activeNovelId: 'novel-A',
-      preloadedState: {
-        backgroundJobs: { byNovelId: { 'novel-A': {
-          skeletonReviewActive: false, timelineCascadeActive: false, worldReviewActive: false, characterReviewActive: true,
-        } } },
-      },
-    })
-    expect(screen.getByText('人物设定审查中…')).not.toBeNull()
-  })
 })
 
 describe('auto-collapse after 3s', () => {
@@ -96,7 +84,7 @@ describe('auto-collapse after 3s', () => {
       activeNovelId: 'novel-A',
       preloadedState: {
         backgroundJobs: { byNovelId: { 'novel-A': {
-          skeletonReviewActive: true, timelineCascadeActive: false, worldReviewActive: false, characterReviewActive: false,
+          skeletonReviewActive: true, timelineCascadeActive: false, worldReviewActive: false,
         } } },
       },
     })
@@ -121,7 +109,7 @@ describe('auto-collapse after 3s', () => {
       activeNovelId: 'novel-A',
       preloadedState: {
         backgroundJobs: { byNovelId: { 'novel-A': {
-          skeletonReviewActive: true, timelineCascadeActive: false, worldReviewActive: true, characterReviewActive: false,
+          skeletonReviewActive: true, timelineCascadeActive: false, worldReviewActive: true,
         } } },
       },
     })
@@ -153,7 +141,7 @@ describe('auto-collapse after 3s', () => {
       activeNovelId: 'novel-A',
       preloadedState: {
         backgroundJobs: { byNovelId: { 'novel-A': {
-          skeletonReviewActive: false, timelineCascadeActive: false, worldReviewActive: true, characterReviewActive: false,
+          skeletonReviewActive: false, timelineCascadeActive: false, worldReviewActive: true,
         } } },
       },
     })
@@ -209,17 +197,17 @@ describe('completion flash', () => {
   it('flashes a static checkmark in the collapsed icon shape when the job finishes after collapsing', () => {
     const { store } = renderWithStore(<BackgroundJobToast />)
     act(() => {
-      store.dispatch(wsEventReceived({ type: 'character_review_started', novel_id: 'novel-A' }))
+      store.dispatch(wsEventReceived({ type: 'skeleton_review_started', novel_id: 'novel-A' }))
     })
     act(() => {
       vi.advanceTimersByTime(3000)
     })
     act(() => {
-      store.dispatch(wsEventReceived({ type: 'character_review_done', novel_id: 'novel-A' }))
+      store.dispatch(wsEventReceived({ type: 'skeleton_review_done', novel_id: 'novel-A' }))
     })
-    expect(screen.queryByText('人物设定审查中…')).toBeNull()
+    expect(screen.queryByText('章节审查中…')).toBeNull()
     const icon = screen.getByRole('status')
-    expect(icon.getAttribute('aria-label')).toBe('人物设定审查中…')
+    expect(icon.getAttribute('aria-label')).toBe('章节审查中…')
     expect(icon.querySelector('.animate-spin')).toBeNull()
 
     act(() => {

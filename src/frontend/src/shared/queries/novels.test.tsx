@@ -177,7 +177,7 @@ describe('useNovelStatusSnapshot', () => {
     const payload = {
       n1: {
         author_loop: false, setup_chat: false, story_sandbox: false,
-        skeleton_review: true, timeline_cascade: false, world_review: false, character_review: false,
+        skeleton_review: true, timeline_cascade: false, world_review: false,
       },
     }
     vi.stubGlobal('fetch', vi.fn(async () => ({
@@ -191,7 +191,7 @@ describe('useNovelStatusSnapshot', () => {
 
     expect(store.getState().novelStatus.byNovelId.n1).toBeUndefined()
     expect(store.getState().backgroundJobs.byNovelId.n1).toEqual({
-      skeletonReviewActive: true, timelineCascadeActive: false, worldReviewActive: false, characterReviewActive: false,
+      skeletonReviewActive: true, timelineCascadeActive: false, worldReviewActive: false,
     })
   })
 })
