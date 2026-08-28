@@ -25,15 +25,6 @@ CallLLM = Callable[[str, str], Awaitable[str]]
 _DEFAULT_MAX_REDO = 2
 
 
-def _review_regen_feedback(gate_message: str) -> str:
-    """Qualitative rubric for AUTO regen prompts — no numeric scores."""
-    rubric = gate_message.strip()
-    prefix = "设定质量评审未通过，未写入。"
-    if rubric.startswith(prefix):
-        rubric = rubric[len(prefix):].lstrip()
-    return f"\n\n## 设定质量评审未通过，请修正：\n{rubric}"
-
-
 def _parse_extracted_character_text(text: str) -> tuple[str, str]:
     """Reverses novel_import.py::split_fine_grained's fixed '性格：X\\n口癖：Y' format --
     that format is written by our own code, so this is a deterministic split, not another
@@ -516,16 +507,12 @@ async def _draft_one_character(
     prompt up front -- collect_character_field_errors hard-requires `race` to match one of
     them whenever the world declares races, but the LLM has no way to guess the exact names
     on its own."""
-    from engine.setup_chat.setup_quality_review import _SETUP_REVIEW_MAX_REDO, gate_character
     from engine.setup_chat.tool_args import build_add_character_args
-    from engine.setup_chat.tools import _build_character_dict
 
     args_cls = build_add_character_args()
     system = _character_system_prompt(race_names)
     schema_feedback = ""
-    review_feedback = ""
     schema_failures = 0
-    review_failures = 0
     last_errors: list[str] = ["未知错误"]
     given_name = outline_entry.get("given_name", "")
     role = outline_entry.get("role", "")
@@ -537,15 +524,15 @@ async def _draft_one_character(
     relationship_block = f"\n\n该角色的关系：{relationships_text}" if relationships_text else ""
     label = given_name or "?"
     attempt = 0
-    while schema_failures <= max_redo and review_failures <= _SETUP_REVIEW_MAX_REDO:
+    while schema_failures <= max_redo:
         attempt += 1
         user = (
             f"{brief}\n\n该角色已定：姓名={given_name}，定位={role}，人设概要={persona}"
-            f"{relationship_block}{race_block}{schema_feedback}{review_feedback}"
+            f"{relationship_block}{race_block}{schema_feedback}"
         )
         logger.debug(
-            "[auto_build_setup] 角色草稿 name={} attempt={} schema_failures={}/{} review_failures={}/{} 发起 LLM 调用",
-            label, attempt, schema_failures, max_redo, review_failures, _SETUP_REVIEW_MAX_REDO,
+            "[auto_build_setup] 角色草稿 name={} attempt={} schema_failures={}/{} 发起 LLM 调用",
+            label, attempt, schema_failures, max_redo,
         )
         raw = await call_llm(system, user)
         parsed = _parse_one_object(raw)
@@ -575,30 +562,11 @@ async def _draft_one_character(
             schema_feedback = "\n\n## 上一轮未通过，请修正：\n" + "\n".join(f"- {m}" for m in last_errors)
             continue
         dumped = validated.model_dump()
-        char_for_gate = _build_character_dict(
-            dumped["given_name"], dumped["role"], dumped["gender"], dumped.get("race", ""),
-            dumped["causal_anchors"], dumped["physique"],
-            dumped["clothing_color_palette"], dumped["clothing_materials"],
-            dumped["clothing_signature_outfit"], dumped.get("clothing_accessories") or [],
-            dumped["sliders"],
-            dumped["identity_background"], dumped.get("hobbies") or [],
-            dumped.get("verbal_tic", ""), dumped["personality"],
-        )
-        char_for_gate.update({k: v for k, v in dumped.items() if k not in char_for_gate})
-        ok, gate_msg = await gate_character(char_for_gate, novel_brief=brief)
-        if ok:
-            logger.info("[auto_build_setup] 角色草稿 name={} attempt={} 校验与质量评审通过", label, attempt)
-            return dumped, None
-        review_failures += 1
-        last_errors = [gate_msg.strip()]
-        logger.warning(
-            "[auto_build_setup] 角色草稿 name={} attempt={} 质量评审未通过（review_failures={}/{}）",
-            label, attempt, review_failures, _SETUP_REVIEW_MAX_REDO,
-        )
-        review_feedback = _review_regen_feedback(gate_msg)
+        logger.info("[auto_build_setup] 角色草稿 name={} attempt={} schema 校验通过", label, attempt)
+        return dumped, None
     logger.error(
-        "[auto_build_setup] 角色草稿 name={} 耗尽尝试（schema={}/{} review={}/{}），最终失败：{}",
-        label, schema_failures, max_redo, review_failures, _SETUP_REVIEW_MAX_REDO, "、".join(last_errors),
+        "[auto_build_setup] 角色草稿 name={} 耗尽尝试（schema={}/{}），最终失败：{}",
+        label, schema_failures, max_redo, "、".join(last_errors),
     )
     return None, "、".join(last_errors)
 
