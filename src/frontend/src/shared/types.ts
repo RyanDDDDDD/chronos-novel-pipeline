@@ -197,6 +197,7 @@ export interface CastCharacter {
   personality?: string
   portrait_path?: string
   portrait_visual_tags?: string
+  portrait_identity_tags?: string
 }
 export type CastCharacterInput = Pick<
   CastCharacter,
@@ -211,6 +212,7 @@ export type CastCharacterInput = Pick<
   hobbies?: string[]
   verbal_tic?: string
   portrait_visual_tags?: string
+  portrait_identity_tags?: string
 } & Record<string, string | string[] | Record<string, string> | Record<string, string | { level: number; text: string; levels?: Record<string, string> }> | undefined>
 export interface PlotStage {
   stage_num: number

@@ -245,6 +245,7 @@ Assemble setup-chat agent: DeepSeek model + tools + system prompt + asynchronous
         remove_relationship_edge,
         rename_novel_title,
         set_chapter_direction,
+        set_source_franchise,
         set_stage_extensions,
         set_stage_lens,
         write_chapter_skeleton,
@@ -321,6 +322,7 @@ Assemble setup-chat agent: DeepSeek model + tools + system prompt + asynchronous
         load_skill,
         present_choices,
         rename_novel_title,
+        set_source_franchise,
     ]
     #skill 工具与内置工具撞名 → ToolNode 行为未定义，组装期就地拦截。只对"内建 + 已启用内容包"
     #目录执行代码——IMPORTED_SKILLS_DIR（导入 skill）永远排除，其代码永不执行（见 skills.py

@@ -8,7 +8,12 @@ from media.portrait.base_model_adapter import adapt_for_base_model
 from media.portrait.style_presets import get_art_style_preset
 
 
-def build_portrait_prompt(visual_tags: str, base_model: str | None = None) -> tuple[str, str]:
+def build_portrait_prompt(
+    visual_tags: str,
+    base_model: str | None = None,
+    *,
+    identity_tags: str | None = None,
+) -> tuple[str, str]:
     from engine.modes.author_loop_skill_prefs import load_dialogue_prefs
 
     prefs = load_dialogue_prefs()
@@ -16,7 +21,10 @@ def build_portrait_prompt(visual_tags: str, base_model: str | None = None) -> tu
     extra_positive = (prefs.get("portrait_style_prompt") or "").strip()
     extra_negative = (prefs.get("portrait_negative_prompt") or "").strip()
 
-    positive_parts = [p for p in (visual_tags, preset.positive_fragment, extra_positive) if p]
+    # A manual danbooru identity anchor (e.g. "shiroko (blue archive), blue archive") leads
+    # the positive prompt verbatim -- booru models weight the earliest tags most heavily.
+    lead = (identity_tags or "").strip()
+    positive_parts = [p for p in (lead, visual_tags, preset.positive_fragment, extra_positive) if p]
     negative_parts = [p for p in (preset.negative_fragment, extra_negative) if p]
     positive = ", ".join(positive_parts)
     negative = ", ".join(negative_parts)

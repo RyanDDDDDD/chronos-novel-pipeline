@@ -22,6 +22,7 @@ export interface ParsedCastCharacterMarkdown {
   hobbies?: string[]
   verbal_tic?: string
   portrait_visual_tags?: string
+  portrait_identity_tags?: string
   customFields?: Record<string, string>
 }
 
@@ -134,6 +135,7 @@ export function parseCastCharacterMarkdown(
     else if (label === '因果锚点') parsed.causal_anchors = parseBulletKeyValues(body)
     else if (label === '体格') parsed.physique = parseBulletKeyValues(body)
     else if (label === '着装 DNA') parsed.clothing_dna = parseClothingDna(body)
+    else if (label === '形象锚定') parsed.portrait_identity_tags = body
     else if (label === '生图提示词') parsed.portrait_visual_tags = body
     else if (label === '爱好') parsed.hobbies = parseTagList(body)
     else if (label === '口癖') parsed.verbal_tic = body

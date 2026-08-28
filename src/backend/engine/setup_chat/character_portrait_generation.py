@@ -83,7 +83,10 @@ async def _run_portrait_generation(novel_id: str, name: str) -> None:
 
                 tags = await extract_and_persist_visual_tags(novel_id, name, char)
 
-            prompt, negative_prompt = build_portrait_prompt(tags, entry.get("base_model"))
+            identity_tags = (char.get("portrait_identity_tags") or "").strip() or None
+            prompt, negative_prompt = build_portrait_prompt(
+                tags, entry.get("base_model"), identity_tags=identity_tags,
+            )
             provider = build_image_provider(entry)
 
             from media.portrait.gate import IMAGE_GEN_GATE

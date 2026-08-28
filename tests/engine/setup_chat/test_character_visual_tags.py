@@ -22,6 +22,26 @@ def test_schedule_extract_visual_tags_registers_dedup_once_event(monkeypatch):
     assert captured["dedup"] is True
 
 
+def test_schedule_extract_visual_tags_all_enqueues_every_cast_member(monkeypatch):
+    from engine.setup_chat import character_visual_tags as cvt
+
+    class _FakeRepo:
+        def list_raw(self):
+            return [
+                {"name": "甲", "given_name": "甲"},
+                {"name": "乙", "given_name": "乙"},
+                "junk",
+            ]
+
+    monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
+    enqueued: list[str] = []
+    monkeypatch.setattr(cvt, "schedule_extract_visual_tags", lambda name: enqueued.append(name))
+
+    cvt.schedule_extract_visual_tags_all()
+
+    assert enqueued == ["甲", "乙"]
+
+
 @pytest.mark.asyncio
 async def test_run_extract_visual_tags_persists_without_triggering_portrait_job(monkeypatch):
     from engine.setup_chat import character_visual_tags as cvt

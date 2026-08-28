@@ -235,6 +235,7 @@ async def test_build_agent_includes_rename_novel_title_tool(monkeypatch, tmp_pat
 
     tool_names = {t.name for t in all_registered_tools()}
     assert "rename_novel_title" in tool_names
+    assert "set_source_franchise" in tool_names
     await agent.checkpointer.conn.close()
 
 

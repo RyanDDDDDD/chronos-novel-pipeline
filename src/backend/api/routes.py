@@ -636,6 +636,16 @@ Assemble the main author's section-by-section output into a whole chapter. md. P
             fields[spec.name] = str(body.get(spec.name, ""))
         return fields
 
+    def _portrait_tag_overrides(body: dict) -> dict:
+        """Pull the two portrait tag fields out as explicit kwargs (key absent -> None ->
+        _*_character_core leaves the stored value alone; "" -> explicit clear)."""
+        out: dict = {}
+        for key in ("portrait_visual_tags", "portrait_identity_tags"):
+            raw = (body or {}).get(key)
+            if raw is not None:
+                out[key] = str(raw)
+        return out
+
     @app.post("/api/setup/cast")
     async def post_cast_character(body: dict):
         from engine.setup_chat.tools import _add_character_core
@@ -643,7 +653,9 @@ Assemble the main author's section-by-section output into a whole chapter. md. P
         # Manual cast-page create: background review/timeline-derive still run, but must not
         # inject a system-notice turn into the chat transcript for a UI action outside chat.
         ok, msg, char = await _add_character_core(
-            notify_chat=False, **_character_fields_from_body(body or {})
+            notify_chat=False,
+            **_portrait_tag_overrides(body or {}),
+            **_character_fields_from_body(body or {}),
         )
         if not ok:
             return Response(
@@ -656,15 +668,13 @@ Assemble the main author's section-by-section output into a whole chapter. md. P
     async def patch_cast_character(name: str, body: dict):
         from engine.setup_chat.tools import _edit_character_core
 
-        #None (key absent) == "this edit didn't touch the tags field", so the auto-preserve/
-        #auto-derive gating in _edit_character_core still applies; only a present key -- even ""
-        #to clear it -- counts as an explicit manual override.
-        raw_tags = (body or {}).get("portrait_visual_tags")
-        portrait_visual_tags = str(raw_tags) if raw_tags is not None else None
+        # Key absent -> None -> _edit_character_core keeps the stored value; a present key
+        # (even "" to clear it) is an explicit manual override. See _portrait_tag_overrides.
         # Manual cast-page edit: background review/timeline-derive still run, but must not
         # inject a system-notice turn into the chat transcript for a UI action outside chat.
         ok, msg, char = await _edit_character_core(
-            name=name, portrait_visual_tags=portrait_visual_tags, notify_chat=False,
+            name=name, notify_chat=False,
+            **_portrait_tag_overrides(body or {}),
             **_character_fields_from_body(body or {}),
         )
         if not ok:
@@ -1600,6 +1610,34 @@ Receive a user message and run a setting dialog; the output is broadcast via ws.
                 media_type="application/json",
             )
         return {"ok": True}
+
+    @app.get("/api/novels/{nid}/source-franchise")
+    async def get_source_franchise_endpoint(nid: str) -> dict:
+        from api.services.novels import get_source_franchise
+
+        return {"franchise": get_source_franchise(nid)}
+
+    @app.put("/api/novels/{nid}/source-franchise")
+    async def set_source_franchise_endpoint(nid: str, body: dict):
+        from fastapi import Response
+
+        from api.services.novels import set_source_franchise
+
+        franchise = str((body or {}).get("franchise", ""))
+        try:
+            set_source_franchise(nid, franchise)
+        except ValueError as e:
+            return Response(
+                content=json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False),
+                status_code=404,
+                media_type="application/json",
+            )
+        # A franchise change shifts which identity tag (if any) the extractor should lead
+        # with, so every cast member's prompt cache needs recomputing.
+        from engine.setup_chat.character_visual_tags import schedule_extract_visual_tags_all
+
+        schedule_extract_visual_tags_all()
+        return {"ok": True, "franchise": franchise.strip()}
 
     @app.get("/api/state-derive-fields")
     async def list_state_derive_fields_endpoint() -> dict:

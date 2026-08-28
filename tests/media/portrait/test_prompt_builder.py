@@ -79,6 +79,42 @@ def test_build_portrait_prompt_unknown_preset_id_falls_back_to_default(monkeypat
     assert prompt == "1girl, masterpiece, best quality, highly detailed, anime style, sharp focus"
 
 
+def test_build_portrait_prompt_leads_with_identity_tags(monkeypatch):
+    from media.portrait import prompt_builder
+
+    monkeypatch.setattr(
+        "engine.modes.author_loop_skill_prefs.load_dialogue_prefs",
+        lambda: {
+            "portrait_style_preset_id": "anime",
+            "portrait_style_prompt": "", "portrait_negative_prompt": "",
+        },
+    )
+
+    prompt, _ = prompt_builder.build_portrait_prompt(
+        "1girl, silver hair", identity_tags="  shiroko (blue archive), blue archive  ",
+    )
+
+    assert prompt.startswith("shiroko (blue archive), blue archive, 1girl, silver hair, ")
+
+
+def test_build_portrait_prompt_identity_tags_none_is_unchanged(monkeypatch):
+    from media.portrait import prompt_builder
+
+    monkeypatch.setattr(
+        "engine.modes.author_loop_skill_prefs.load_dialogue_prefs",
+        lambda: {
+            "portrait_style_preset_id": "anime",
+            "portrait_style_prompt": "", "portrait_negative_prompt": "",
+        },
+    )
+
+    with_kw, _ = prompt_builder.build_portrait_prompt("1girl, silver hair", identity_tags=None)
+    without_kw, _ = prompt_builder.build_portrait_prompt("1girl, silver hair")
+    assert with_kw == without_kw == (
+        "1girl, silver hair, masterpiece, best quality, highly detailed, anime style, sharp focus"
+    )
+
+
 def test_build_portrait_prompt_applies_base_model_adapter(monkeypatch):
     from media.portrait import prompt_builder
 

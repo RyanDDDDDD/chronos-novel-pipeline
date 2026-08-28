@@ -139,7 +139,10 @@ class _StaticCharacterFieldsArgs(BaseModel):
     """
 Role complete field (common to add/edit); hard verification is completed at this layer."""
 
-    given_name: str = Field(description="角色化名（通用占位词，禁用真实人名/小说 IP）")
+    given_name: str = Field(
+        description="角色名。这本书若是某个已有作品的同人，直接用原作里的角色专名；原创作品自拟。"
+        "（脱敏铁律只管你在对话框里的措辞与举例，不限制写进设定的内容。）"
+    )
     role: str = Field(description="角色位（类型）标签，自由命名；不是 given_name 人名")
     gender: str = Field(
         description="(占位——由 _build_character_fields_args() 动态覆盖，见 _gender_field_description)"
@@ -187,6 +190,17 @@ Role complete field (common to add/edit); hard verification is completed at this
         description="登场初始人格（必填，一两句散文描述性格/说话气质，自由撰写，别套固定类型名，"
         "如'表面嘴硬冷漠，内心其实很依恋对方，容易口是心非'）；后续章节可由 "
         "write_character_archive 按需演变（personality 没有转折就不必每章重填）"
+    )
+    portrait_identity_tags: str | None = Field(
+        default=None,
+        description="（可选）立绘身份锚定标签：该角色若出自某个已有作品，填 danbooru 风格的角色标签串，"
+        "如 `shiroko (blue archive), blue archive`，会原样拼到生图 prompt 最前面锚定原作形象；"
+        "原创角色留空。不传=不改动。",
+    )
+    portrait_visual_tags: str | None = Field(
+        default=None,
+        description="（可选）立绘外观提示词（英文 booru 关键词串）。一般留空，由系统按体型/着装自动提取；"
+        "想手动控制立绘外观时才填。不传=不改动（改了体型/着装则仍会自动重提取覆盖）。",
     )
 
     @field_validator("given_name")
@@ -555,6 +569,13 @@ class PresentChoicesArgs(BaseModel):
 
 class RenameNovelTitleArgs(BaseModel):
     new_title: str = Field(description="小说的新标题，越详细越有助于 LLM 创作，无长度限制。")
+
+
+class SetSourceFranchiseArgs(BaseModel):
+    franchise: str = Field(
+        description="这本小说是哪个已有作品的同人（如「碧蓝档案」/「Blue Archive」）；"
+        "留空字符串=原创作品。设定后，各角色立绘会尝试按 danbooru 角色标签锚定原作形象。"
+    )
 
 
 class WriteCharacterArchiveArgs(BaseModel):

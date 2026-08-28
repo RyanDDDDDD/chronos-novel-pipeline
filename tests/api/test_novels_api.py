@@ -221,6 +221,38 @@ def test_patch_novel_pinned_unknown_returns_400(monkeypatch, tmp_path):
     assert r.json()["ok"] is False
 
 
+def test_source_franchise_roundtrip(monkeypatch, tmp_path):
+    from api.hub import app
+
+    novels_root = tmp_path / "novels"
+    novels_root.mkdir(exist_ok=True)
+    monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(novels_root))
+    seed_registry_novel(novels_root, "default", "默认", active=True)
+
+    client = TestClient(app)
+    assert client.get("/api/novels/default/source-franchise").json() == {"franchise": ""}
+
+    put = client.put("/api/novels/default/source-franchise", json={"franchise": "  Blue Archive  "})
+    assert put.status_code == 200
+    assert put.json() == {"ok": True, "franchise": "Blue Archive"}
+
+    assert client.get("/api/novels/default/source-franchise").json() == {"franchise": "Blue Archive"}
+
+
+def test_set_source_franchise_unknown_novel_returns_404(monkeypatch, tmp_path):
+    from api.hub import app
+
+    novels_root = tmp_path / "novels"
+    novels_root.mkdir(exist_ok=True)
+    monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(novels_root))
+    seed_registry_novel(novels_root, "default", "默认", active=True)
+
+    client = TestClient(app)
+    r = client.put("/api/novels/nope/source-franchise", json={"franchise": "X"})
+    assert r.status_code == 404
+    assert r.json()["ok"] is False
+
+
 def test_novels_status_omits_character_review(monkeypatch, tmp_path):
     import api.hub as hub_mod
     from api.hub import app

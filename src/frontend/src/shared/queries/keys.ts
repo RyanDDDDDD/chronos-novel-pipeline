@@ -19,6 +19,7 @@ export const skeletonKey = (novelId: string, chapter: number) =>
   ['skeleton', novelId, chapter] as const
 export const proseStylesKey = ['prose-styles'] as const
 export const proseStyleKey = (id: string) => ['prose-style', id] as const
+export const sourceFranchiseKey = (id: string) => ['source-franchise', id] as const
 export const sandboxDialogueTurnCountKey = (id: string) => ['sandbox-dialogue-turn-count', id] as const
 export const proseStylePresetContentKey = (presetId: string) => ['prose-style-preset-content', presetId] as const
 export const reviewHookCardKey = (name: string) => ['review-hook-card', name] as const
