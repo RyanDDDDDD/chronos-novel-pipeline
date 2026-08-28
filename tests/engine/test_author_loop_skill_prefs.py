@@ -787,6 +787,17 @@ def test_import_llm_params_skeleton_internal_nodes_roundtrip(monkeypatch, tmp_pa
     }
 
 
+def test_import_llm_params_character_portrait_model_ref_roundtrip(monkeypatch, tmp_path):
+    """character_portrait carries the image-gen entry binding (model_ref) written by
+    ImageGenNodeParamsPanel -- it must survive the _clean_llm_params whitelist so
+    _resolve_image_gen_entry can read it back."""
+    p = tmp_path / "skill_prefs.json"
+    sp.save_dialogue_prefs({"import_llm_params": {"character_portrait": {"model_ref": "img-nai-1"}}})
+    assert sp.load_dialogue_prefs()["import_llm_params"] == {
+        "character_portrait": {"model_ref": "img-nai-1"},
+    }
+
+
 @pytest.mark.asyncio
 async def test_beat_dialogue_draft_call_llm_routes_through_import_node(monkeypatch):
     """Lives outside tests/engine/setup_chat/ so conftest's autouse _stub_dialogue_draft
