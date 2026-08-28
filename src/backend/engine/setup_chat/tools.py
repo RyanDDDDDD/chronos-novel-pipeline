@@ -315,10 +315,6 @@ async def _add_character_core(
 
     invalidate_entity_vocab_cache()
 
-    from engine.setup_chat.character_background_review import schedule_character_quality_review
-
-    schedule_character_quality_review(name, notify_chat=notify_chat)
-
     from engine.setup_chat.character_visual_tags import schedule_extract_visual_tags
 
     schedule_extract_visual_tags(name)
@@ -454,10 +450,6 @@ async def _edit_character_core(
     from engine.memory_recall.entity_index import invalidate_entity_vocab_cache
 
     invalidate_entity_vocab_cache()
-
-    from engine.setup_chat.character_background_review import schedule_character_quality_review
-
-    schedule_character_quality_review(given_name, notify_chat=notify_chat)
 
     if visual_changed:
         from engine.setup_chat.character_visual_tags import schedule_extract_visual_tags

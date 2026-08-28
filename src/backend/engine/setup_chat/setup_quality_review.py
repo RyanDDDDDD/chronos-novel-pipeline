@@ -1,4 +1,4 @@
-"""Setup quality review: semantic gate for world bible / character cards before persist."""
+"""Setup quality review: semantic gate for the world bible before persist."""
 from __future__ import annotations
 
 from typing import Any
@@ -8,7 +8,7 @@ from loguru import logger
 from engine.author_loop.review.review_hook import ReviewContext, ReviewHook
 from engine.author_loop.review.review_loader import REVIEW_HOOKS
 from engine.author_loop.self_review import SelfReviewConfig, SelfReviewVerdict, run_self_review
-from engine.setup.chat_summary import render_character_chat, render_world_chat
+from engine.setup.chat_summary import render_world_chat
 
 SETUP_WORLD_HOOK_NAMES: tuple[str, ...] = (
     "setup_world_completeness",
@@ -19,18 +19,9 @@ PARTIAL_WORLD_HOOK_NAMES: tuple[str, ...] = (
     "setup_world_tension",
     "setup_world_distinctiveness",
 )
-SETUP_CAST_HOOK_NAMES: tuple[str, ...] = (
-    "setup_cast_anchors",
-    "setup_cast_contradiction",
-    "setup_cast_vividness",
-    "setup_cast_signature",
-)
-
 _SETUP_REVIEW_THRESHOLD = 80
 _SETUP_REVIEW_FLOOR = 60
-_SETUP_REVIEW_MAX_REDO = 2
 _WORLD_REVIEW_HINT_PREFIX = "设定质量建议（已写入，可按需改进）："
-_EMPTY_WORLD_FALLBACK = "（尚未构建世界观，仅评角色卡内部质量）"
 
 
 def active_hooks(names: tuple[str, ...]) -> list[ReviewHook]:
@@ -124,38 +115,6 @@ async def run_world_review(
     return verdict
 
 
-async def run_cast_review(
-    char: dict,
-    *,
-    novel_brief: str | None = None,
-) -> SelfReviewVerdict:
-    from repositories import get_world_repo
-
-    bible = get_world_repo().get() or {}
-    world_text = render_world_chat(bible) or _EMPTY_WORLD_FALLBACK
-    hooks = active_hooks(SETUP_CAST_HOOK_NAMES)
-    ctx = ReviewContext(
-        beat_intent="",
-        base_draft="",
-        refined="",
-        prev_beat_text=None,
-        directive="",
-        world_text=world_text,
-        world_bible=bible if bible else None,
-        character_card=render_character_chat(char),
-        character=char,
-        novel_brief=novel_brief,
-    )
-    verdict = await run_self_review(ctx, _review_llm, _review_config(), hooks=hooks)
-    logger.info(
-        "[setup-review:cast] action={} composite={:.1f} scores={}",
-        verdict.action,
-        verdict.composite,
-        verdict.scores,
-    )
-    return verdict
-
-
 async def run_world_review_with_hooks(
     bible: dict,
     hook_names: tuple[str, ...],
@@ -199,14 +158,3 @@ async def gate_world_bible(
     return True, f"{_WORLD_REVIEW_HINT_PREFIX}\n\n{rubric}"
 
 
-async def gate_character(
-    char: dict,
-    *,
-    novel_brief: str | None = None,
-) -> tuple[bool, str]:
-    hooks = active_hooks(SETUP_CAST_HOOK_NAMES)
-    verdict = await run_cast_review(char, novel_brief=novel_brief)
-    if verdict.action == "accept":
-        return True, ""
-    rubric = format_agent_rubric(verdict, hooks)
-    return False, f"设定质量评审未通过，未写入。\n\n{rubric}"
