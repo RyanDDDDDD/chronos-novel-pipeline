@@ -237,6 +237,28 @@ def test_rename_novel_title_updates_novel_json(tmp_path, monkeypatch):
     assert get_novel_name("novel-1") == "星海彼岸的旅人"
 
 
+def test_set_source_franchise_persists_and_reextracts(tmp_path, monkeypatch):
+    from api.services.novels import get_source_franchise
+    from engine.setup_chat.tools import set_source_franchise
+    from tests.conftest import seed_registry_novel
+
+    novels_root = tmp_path / "novels"
+    monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(novels_root))
+    seed_registry_novel(novels_root, "novel-1", "小说")
+    monkeypatch.setattr("utils.paths.active_novel_id", lambda: "novel-1")
+    reextracted = {"hit": False}
+    monkeypatch.setattr(
+        "engine.setup_chat.character_visual_tags.schedule_extract_visual_tags_all",
+        lambda: reextracted.__setitem__("hit", True),
+    )
+
+    result = set_source_franchise.invoke({"franchise": "  Blue Archive  "})
+
+    assert "Blue Archive" in result
+    assert get_source_franchise("novel-1") == "Blue Archive"
+    assert reextracted["hit"] is True
+
+
 @pytest.mark.asyncio
 async def test_auto_build_setup_logs_each_internal_llm_call(monkeypatch):
     """auto_build_setup's internal call_llm previously called llm.ainvoke() with zero

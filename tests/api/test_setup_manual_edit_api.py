@@ -208,6 +208,36 @@ def test_patch_cast_character_omitted_visual_tags_preserves_cache(tmp_path, monk
     assert lore_raw()[0]["portrait_visual_tags"] == "1girl, old tags"
 
 
+def test_patch_cast_character_identity_tags_set_and_omit(tmp_path, monkeypatch):
+    char = _character("甲")
+    char["name"] = char["given_name"]
+    char["clothing_dna"] = {
+        "color_palette": char.pop("clothing_color_palette"),
+        "materials_preference": char.pop("clothing_materials"),
+        "signature_outfit": char.pop("clothing_signature_outfit"),
+        "accessories": char.pop("clothing_accessories"),
+    }
+    char["portrait_identity_tags"] = "old anchor"
+    _seed_novel(tmp_path, monkeypatch, cast=[char])
+    monkeypatch.setattr(
+        "engine.archive.archive_view.delete_character_archives",
+        lambda name: {"removed_stages": 0, "deleted_chapters": []},
+    )
+    monkeypatch.setattr(
+        "engine.setup_chat.character_visual_tags.schedule_extract_visual_tags", lambda name: None,
+    )
+    client = TestClient(app_under_test())
+
+    body = _character("甲")
+    body["portrait_identity_tags"] = "  shiroko (blue archive)  "
+    assert client.patch("/api/setup/cast/甲", json=body).json()["ok"] is True
+    assert lore_raw()[0]["portrait_identity_tags"] == "shiroko (blue archive)"
+
+    # a subsequent PATCH without the field keeps the stored anchor
+    assert client.patch("/api/setup/cast/甲", json=_character("甲")).json()["ok"] is True
+    assert lore_raw()[0]["portrait_identity_tags"] == "shiroko (blue archive)"
+
+
 def test_patch_cast_character_does_not_notify_chat(tmp_path, monkeypatch):
     """Manual cast-page edit must not inject a system-notice turn into the chat transcript
     -- see _edit_character_core's notify_chat param."""

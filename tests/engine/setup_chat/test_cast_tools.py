@@ -806,3 +806,78 @@ async def test_edit_character_persists_under_new_name(monkeypatch, tmp_path):
     assert ok is True and char is not None
     assert any(c.get("name") == "甲改名" for c in lore_raw())
     del tmp_path, msg
+
+
+@pytest.mark.asyncio
+async def test_add_character_stores_portrait_identity_tags(monkeypatch, tmp_path):
+    seed_lore([_full_char("甲")])
+    monkeypatch.setattr(
+        "engine.setup_chat.character_visual_tags.schedule_extract_visual_tags", lambda name: None,
+    )
+
+    await add_character.ainvoke({
+        **_args("乙"), "portrait_identity_tags": "  shiroko (blue archive), blue archive  ",
+    })
+
+    stored = next(c for c in lore_raw() if c.get("name") == "乙")
+    assert stored["portrait_identity_tags"] == "shiroko (blue archive), blue archive"
+    del tmp_path
+
+
+@pytest.mark.asyncio
+async def test_edit_character_identity_tags_set_and_preserve(monkeypatch, tmp_path):
+    from engine.setup_chat.tools import _edit_character_core
+
+    base = _full_char("甲")
+    base["portrait_identity_tags"] = "old anchor"
+    seed_lore([base])
+    monkeypatch.setattr(
+        "engine.setup_chat.timeline_auto.schedule_timeline_cascade", lambda *a, **k: None,
+    )
+    monkeypatch.setattr(
+        "engine.setup_chat.character_visual_tags.schedule_extract_visual_tags", lambda name: None,
+    )
+
+    # omitting the field keeps the stored anchor
+    ok, _, _ = await _edit_character_core(name="甲", **_args("甲"))
+    assert ok
+    assert next(c for c in lore_raw() if c["name"] == "甲")["portrait_identity_tags"] == "old anchor"
+
+    # passing it overrides (and strips)
+    ok, _, _ = await _edit_character_core(
+        name="甲", portrait_identity_tags="  shiroko (blue archive)  ", **_args("甲"),
+    )
+    assert ok
+    assert next(c for c in lore_raw() if c["name"] == "甲")["portrait_identity_tags"] == "shiroko (blue archive)"
+    del tmp_path
+
+
+@pytest.mark.asyncio
+async def test_edit_character_manual_visual_tags_kept_unless_appearance_changed(monkeypatch, tmp_path):
+    from engine.setup_chat.tools import _edit_character_core
+
+    seed_lore([_full_char("甲")])
+    monkeypatch.setattr(
+        "engine.setup_chat.timeline_auto.schedule_timeline_cascade", lambda *a, **k: None,
+    )
+    reextract: list[str] = []
+    monkeypatch.setattr(
+        "engine.setup_chat.character_visual_tags.schedule_extract_visual_tags",
+        lambda name: reextract.append(name),
+    )
+
+    # only personality changes -> hand-typed tags are kept, no re-extract
+    args = _args("甲")
+    args["personality"] = "改过的人格"
+    ok, _, _ = await _edit_character_core(name="甲", portrait_visual_tags="1girl, hand typed", **args)
+    assert ok
+    assert next(c for c in lore_raw() if c["name"] == "甲")["portrait_visual_tags"] == "1girl, hand typed"
+    assert reextract == []
+
+    # a physique change makes hand-typed tags stale -> re-extract is scheduled
+    args = _args("甲")
+    args["physique"] = {k: "changed" for k in args["physique"]}
+    ok, _, _ = await _edit_character_core(name="甲", portrait_visual_tags="1girl, also typed", **args)
+    assert ok
+    assert reextract == ["甲"]
+    del tmp_path

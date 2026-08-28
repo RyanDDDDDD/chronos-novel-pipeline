@@ -52,6 +52,7 @@ from engine.setup_chat.tool_args import (
     RemoveRelationshipEdgeArgs,
     RenameNovelTitleArgs,
     SetChapterDirectionArgs,
+    SetSourceFranchiseArgs,
     SetStageExtensionsArgs,
     SetStageLensArgs,
     WriteChapterSkeletonArgs,
@@ -278,6 +279,8 @@ async def _add_character_core(
     race: str = "",
     hobbies: list[str] | None = None,
     verbal_tic: str = "",
+    portrait_visual_tags: str | None = None,
+    portrait_identity_tags: str | None = None,
     notify_chat: bool = True,
     **extra: Any,
 ) -> tuple[bool, str, dict[str, Any] | None]:
@@ -292,6 +295,10 @@ async def _add_character_core(
         identity_background, hobbies, verbal_tic, personality,
     )
     char.update(extra)
+    if portrait_identity_tags is not None:
+        char["portrait_identity_tags"] = portrait_identity_tags.strip()
+    if portrait_visual_tags is not None:
+        char["portrait_visual_tags"] = portrait_visual_tags.strip()
 
     prior_roster: list = []
     saved_count = 0
@@ -352,6 +359,8 @@ async def add_character(
     race: str = "",
     hobbies: list[str] | None = None,
     verbal_tic: str = "",
+    portrait_visual_tags: str | None = None,
+    portrait_identity_tags: str | None = None,
     **extra: Any,
 ) -> str:
     """新增一个角色并入 cast。主 agent 直接填全字段；校验由 args_schema 完成。
@@ -362,6 +371,8 @@ async def add_character(
         given_name, role, gender, causal_anchors, physique, clothing_color_palette,
         clothing_materials, clothing_signature_outfit, clothing_accessories, sliders,
         personality, identity_background, race, hobbies, verbal_tic,
+        portrait_visual_tags=portrait_visual_tags,
+        portrait_identity_tags=portrait_identity_tags,
         **extra,
     )
     return msg
@@ -385,6 +396,7 @@ async def _edit_character_core(
     hobbies: list[str] | None = None,
     verbal_tic: str = "",
     portrait_visual_tags: str | None = None,
+    portrait_identity_tags: str | None = None,
     notify_chat: bool = True,
     **extra: Any,
 ) -> tuple[bool, str, dict[str, Any] | None]:
@@ -427,6 +439,11 @@ async def _edit_character_core(
         or old_char.get("physique") != char.get("physique")
         or old_char.get("clothing_dna") != char.get("clothing_dna")
     )
+    # portrait_identity_tags: a pure manual anchor, never auto-derived -- None = leave as-is.
+    if portrait_identity_tags is not None:
+        char["portrait_identity_tags"] = portrait_identity_tags.strip()
+    elif isinstance(old_char.get("portrait_identity_tags"), str):
+        char["portrait_identity_tags"] = old_char["portrait_identity_tags"]
     if portrait_visual_tags is not None:
         # Explicit manual override (e.g. the cast detail panel) -- appearance-field
         # changes in this same edit still win below via schedule_extract_visual_tags,
@@ -490,6 +507,8 @@ async def edit_character(
     race: str = "",
     hobbies: list[str] | None = None,
     verbal_tic: str = "",
+    portrait_visual_tags: str | None = None,
+    portrait_identity_tags: str | None = None,
     **extra: Any,
 ) -> str:
     """Change [an existing] character in cast. The main agent fills in the new settings; the verification is completed by args_schema. This tool only locates + checks for duplicates + places the order.
@@ -503,6 +522,8 @@ async def edit_character(
         name, given_name, role, gender, causal_anchors, physique, clothing_color_palette,
         clothing_materials, clothing_signature_outfit, clothing_accessories, sliders,
         personality, identity_background, race, hobbies, verbal_tic,
+        portrait_visual_tags=portrait_visual_tags,
+        portrait_identity_tags=portrait_identity_tags,
         **extra,
     )
     return msg
@@ -1223,6 +1244,21 @@ def rename_novel_title(new_title: str) -> str:
         return "标题不能为空，未修改。"
     rename_novel(active_novel_id(), new_title)
     return f"已将小说标题改为「{new_title}」。"
+
+
+@tool(args_schema=SetSourceFranchiseArgs)
+def set_source_franchise(franchise: str) -> str:
+    """设定这本小说的原作出处（同人）。写盘后重新排队全体角色的立绘提示词提取，让立绘按原作
+    danbooru 标签锚定原作形象。留空字符串=原创作品。仅在用户明确同意后调用。"""
+    from api.services.novels import set_source_franchise as _set
+    from utils.paths import active_novel_id
+
+    from engine.setup_chat.character_visual_tags import schedule_extract_visual_tags_all
+
+    _set(active_novel_id(), franchise)
+    schedule_extract_visual_tags_all()
+    shown = franchise.strip() or "（原创，已清空）"
+    return f"已记录原作出处：{shown}。全体角色立绘提示词将在后台按新出处重新提取。"
 
 
 @tool(args_schema=LoadSkillArgs)
