@@ -31,6 +31,7 @@ export default function ImageServiceModelFields<T extends Draft>({
   const service: ImageService = draft.service ?? 'novita'
 
   const setService = (next: ImageService) => {
+    if (next === service) return // clicking the already-active service must not clear the picked model
     // Switching service invalidates the previously-picked model/base_model. NovelAI has a
     // fixed model list -- preselect the default so the entry is usable without a second click.
     onChange({

@@ -304,6 +304,50 @@ describe('ServiceConfigPage 自定义模型表格', () => {
     expect(entry.service).toBe('novita')
   })
 
+  it('已选中 Novita 服务时再次点击「Novita」按钮是 no-op，不清空已选模型/base_model', async () => {
+    let savedConfig: { config: { llm: { custom_models: { model: string; base_model?: string; service?: string }[] } } } | null = null
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config' && (!init || init.method === undefined)) {
+        return { ok: true, json: async () => ({ config: { llm: { custom_models: [] } } }) }
+      }
+      if (url === '/api/config' && init?.method === 'PUT') {
+        savedConfig = JSON.parse(String(init.body))
+        return { ok: true, json: async () => savedConfig }
+      }
+      if (url === '/api/llm/catalog') {
+        return { ok: true, json: async () => ({ cloud_models: [] }) }
+      }
+      if (url === '/api/image-gen/novita-models') {
+        return {
+          ok: true,
+          json: async () => ({
+            models: ['pony-v6.safetensors'],
+            base_models: { 'pony-v6.safetensors': 'Pony' },
+          }),
+        }
+      }
+      return { ok: true, json: async () => ({}) }
+    }))
+
+    renderPage()
+    fireEvent.click(await screen.findByText('生图模型'))
+    fireEvent.click(await screen.findByRole('button', { name: '添加生图模型' }))
+    fireEvent.click(await screen.findByText('pony-v6.safetensors'))
+
+    // Re-clicking the already-active "Novita" service button must be a no-op -- it must not
+    // reset the model/base_model the user just picked.
+    fireEvent.click(screen.getByRole('button', { name: 'Novita' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '保存此模型' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(savedConfig).not.toBeNull())
+
+    const entry = savedConfig!.config.llm.custom_models.find(m => m.model === 'pony-v6.safetensors')
+    expect(entry).toBeTruthy()
+    expect(entry?.base_model).toBe('Pony')
+    expect(entry?.service).toBe('novita')
+  })
+
   it('选中 Novita checkpoint 时显示名默认自动同步为模型名', async () => {
     let savedConfig: { config: { llm: { custom_models: { model: string; label: string; service?: string }[] } } } | null = null
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
