@@ -40,7 +40,14 @@ function MessageScrollerViewport({
     <MessageScrollerPrimitive.Viewport
       data-slot="message-scroller-viewport"
       className={cn(
-        "size-full min-h-0 min-w-0 scroll-fade-b scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content data-autoscrolling:scrollbar-none",
+        // No `data-autoscrolling:scrollbar-none`: this app forces classic space-taking
+        // scrollbars (::-webkit-scrollbar has an explicit width in index.css), so hiding the
+        // scrollbar mid-autoscroll collapses the reserved gutter (`scrollbar-gutter: stable`
+        // reserves nothing once `scrollbar-width: none`). Pinned to the bottom that ~8px width
+        // change reflows the CJK text every frame, the ResizeObserver re-fires autoscroll, and
+        // the toggle loops -> visible flicker that stops the moment you scroll up (free mode,
+        // no autoscroll). Keeping the thin scrollbar visible during autoscroll is the fix.
+        "size-full min-h-0 min-w-0 scroll-fade-b scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content",
         className
       )}
       {...props}
