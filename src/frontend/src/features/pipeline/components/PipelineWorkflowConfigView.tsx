@@ -279,10 +279,11 @@ export default function PipelineWorkflowConfigView({ novelId }: { novelId: strin
     'skeleton_writer', 'beat_dialogue_draft', 'prose_style_extraction', 'incremental_relationship',
   ]
   const IMAGE_GEN_PARAM_NODE_IDS = ['character_portrait']
+  const SANDBOX_IMAGE_GEN_PARAM_NODE_IDS = ['scene_image']
   const SELECTABLE_NODE_IDS_BY_TAB: Record<WorkflowTab, Set<string>> = {
     runtime: new Set(RUNTIME_LLM_PARAM_NODE_IDS),
     skeleton: new Set([...IMPORT_LLM_PARAM_NODE_IDS, ...IMAGE_GEN_PARAM_NODE_IDS]),
-    sandbox: new Set(SANDBOX_LLM_PARAM_NODE_IDS),
+    sandbox: new Set([...SANDBOX_LLM_PARAM_NODE_IDS, ...SANDBOX_IMAGE_GEN_PARAM_NODE_IDS]),
   }
 
   const RUNTIME_LLM_PARAM_LABELS: Record<string, string> = {
@@ -310,6 +311,7 @@ export default function PipelineWorkflowConfigView({ novelId }: { novelId: strin
     prose_style_extraction: '文风抽取', incremental_relationship: '关系推断',
   }
   const IMAGE_GEN_PARAM_LABELS: Record<string, string> = { character_portrait: '立绘生成' }
+  const SANDBOX_IMAGE_GEN_PARAM_LABELS: Record<string, string> = { scene_image: '场景生图' }
 
   return (
     // contain-layout gives this box its own containing block for `position: fixed`
@@ -377,6 +379,15 @@ export default function PipelineWorkflowConfigView({ novelId }: { novelId: strin
                 <ImageGenNodeParamsPanel
                   nodeIds={IMAGE_GEN_PARAM_NODE_IDS}
                   labels={IMAGE_GEN_PARAM_LABELS}
+                  selectedNodeId={selectedNodeId}
+                  novelId={novelId}
+                />
+              )}
+              {tab === 'sandbox' && (
+                <ImageGenNodeParamsPanel
+                  nodeIds={SANDBOX_IMAGE_GEN_PARAM_NODE_IDS}
+                  labels={SANDBOX_IMAGE_GEN_PARAM_LABELS}
+                  configKey="sandbox_llm_params"
                   selectedNodeId={selectedNodeId}
                   novelId={novelId}
                 />

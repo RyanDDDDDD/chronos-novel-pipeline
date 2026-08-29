@@ -1,7 +1,7 @@
 export type LlmParamNodeId = 'director' | 'review' | 'state_derive'
 export type SandboxLlmParamNodeId =
   'prose' | 'derive_char' | 'derive_scene' | 'summary_fold' | 'event_extract' | 'profile_mutate' | 'suggest'
-  | 'dialogue_draft' | 'identify_cast' | 'selection_rewrite'
+  | 'dialogue_draft' | 'identify_cast' | 'selection_rewrite' | 'scene_image'
 export type ImportLlmParamNodeId =
   'image_recognition' | 'text_recognition' | 'review' | 'auto_build_setup' | 'timeline_derive'
   | 'setup_quality_review' | 'skeleton_writer' | 'beat_dialogue_draft' | 'prose_style_extraction'
@@ -22,7 +22,7 @@ export type LlmNodeParams = Partial<Record<LlmParamKey, number>> & {
 
 const LLM_PARAM_NODE_IDS: LlmParamNodeId[] = ['director', 'review', 'state_derive']
 const SANDBOX_LLM_PARAM_NODE_IDS: SandboxLlmParamNodeId[] =
-  ['prose', 'derive_char', 'derive_scene', 'summary_fold', 'event_extract', 'profile_mutate', 'suggest', 'dialogue_draft', 'identify_cast', 'selection_rewrite']
+  ['prose', 'derive_char', 'derive_scene', 'summary_fold', 'event_extract', 'profile_mutate', 'suggest', 'dialogue_draft', 'identify_cast', 'selection_rewrite', 'scene_image']
 const IMPORT_LLM_PARAM_NODE_IDS: ImportLlmParamNodeId[] =
   ['image_recognition', 'text_recognition', 'review', 'auto_build_setup', 'timeline_derive', 'setup_quality_review',
     'skeleton_writer', 'beat_dialogue_draft', 'prose_style_extraction', 'incremental_relationship', 'character_portrait']
