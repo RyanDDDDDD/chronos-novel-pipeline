@@ -49,6 +49,9 @@ export interface OrchestratorEvent {
   fatal?: boolean
   character?: string
   portrait_path?: string
+  branch_id?: string
+  round_id?: string
+  filename?: string
   chapters?: number[]
   built?: number[]
   subsystem?: string

@@ -184,6 +184,14 @@ def portrait_path(filename: str) -> str:
     return os.path.join(portrait_dir(), filename)
 
 
+def sandbox_scene_dir() -> str:
+    return os.path.join(active_novel_dir(), "assets", "sandbox_scenes")
+
+
+def sandbox_scene_path(filename: str) -> str:
+    return os.path.join(sandbox_scene_dir(), filename)
+
+
 def plot_library_path() -> str:
     return os.path.join(active_novel_dir(), "plot", "plot_library.json")
 

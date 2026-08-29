@@ -798,6 +798,17 @@ def test_import_llm_params_character_portrait_model_ref_roundtrip(monkeypatch, t
     }
 
 
+def test_sandbox_llm_params_scene_image_model_ref_roundtrip(monkeypatch, tmp_path):
+    """scene_image carries the V4.5 image-gen entry binding for sandbox scene generation --
+    only model_ref survives the whitelist, same as import_llm_params.character_portrait."""
+    sp.save_dialogue_prefs({
+        "sandbox_llm_params": {"scene_image": {"model_ref": "  img-v45-1  ", "junk": 1}},
+    })
+    assert sp.load_dialogue_prefs()["sandbox_llm_params"] == {
+        "scene_image": {"model_ref": "img-v45-1"},
+    }
+
+
 @pytest.mark.asyncio
 async def test_beat_dialogue_draft_call_llm_routes_through_import_node(monkeypatch):
     """Lives outside tests/engine/setup_chat/ so conftest's autouse _stub_dialogue_draft

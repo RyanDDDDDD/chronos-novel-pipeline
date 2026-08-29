@@ -29,3 +29,13 @@ def test_portrait_dir_and_path(monkeypatch, tmp_path):
     assert paths.portrait_path("甲-123.png") == str(
         tmp_path / "novel-A" / "assets" / "portraits" / "甲-123.png"
     )
+
+
+def test_sandbox_scene_dir_and_path(monkeypatch, tmp_path):
+    from utils import paths
+
+    monkeypatch.setattr(paths, "active_novel_dir", lambda: str(tmp_path / "n"))
+    assert paths.sandbox_scene_dir() == str(tmp_path / "n" / "assets" / "sandbox_scenes")
+    assert paths.sandbox_scene_path("b1_r1-123.png") == str(
+        tmp_path / "n" / "assets" / "sandbox_scenes" / "b1_r1-123.png"
+    )

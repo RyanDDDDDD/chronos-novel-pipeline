@@ -42,7 +42,21 @@ class NovitaImageProvider(ImagePortraitProvider):
         self._api_key = api_key
         self._model = model
 
-    async def generate(self, prompt: str, *, negative_prompt: str = "") -> bytes:
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        negative_prompt: str = "",
+        char_captions: list[dict] | None = None,
+        character_references: list[bytes] | None = None,
+        reference_strength: float = 0.7,
+        reference_fidelity: float = 1.0,
+    ) -> bytes:
+        del char_captions, reference_strength, reference_fidelity  # not supported by Novita
+        if character_references:
+            raise RuntimeError(
+                "场景生图的角色参考（Precise Reference）只支持 NovelAI V4.5，当前绑定的是 Novita"
+            )
         headers = {"Authorization": f"Bearer {self._api_key}"}
         async with httpx.AsyncClient() as client:
             submit_resp = await client.post(

@@ -951,6 +951,40 @@ Receive a user message and run a setting dialog; the output is broadcast via ws.
     async def story_sandbox_status_endpoint() -> dict:
         return {"busy": _hub_instance().is_story_sandbox_busy()}
 
+    @app.post("/api/story-sandbox/scene-image")
+    async def story_sandbox_scene_image_endpoint(body: dict):
+        from media.scene.generation import schedule_sandbox_scene_image
+
+        b = body or {}
+        schedule_sandbox_scene_image(
+            int(b.get("chapter", 0)), str(b.get("branch_id", "")), str(b.get("round_id", "")),
+        )
+        return {"ok": True}
+
+    @app.get("/api/story-sandbox/scene-images")
+    async def story_sandbox_scene_images_endpoint(chapter: int, branch_id: str) -> dict:
+        from media.scene.store import list_sandbox_scene_images
+
+        images = {
+            rid: f"/api/story-sandbox/scene-image/{chapter}/{branch_id}/{rid}/file?v={fn}"
+            for rid, fn in list_sandbox_scene_images(chapter, branch_id).items()
+        }
+        return {"images": images}
+
+    @app.get("/api/story-sandbox/scene-image/{chapter}/{branch_id}/{round_id}/file")
+    async def story_sandbox_scene_image_file_endpoint(
+        chapter: int, branch_id: str, round_id: str,
+    ):
+        from fastapi import Response
+        from fastapi.responses import FileResponse
+        from media.scene.store import sandbox_scene_image_filename
+        from utils.paths import sandbox_scene_path
+
+        fn = sandbox_scene_image_filename(chapter, branch_id, round_id)
+        if not fn:
+            return Response(status_code=404)
+        return FileResponse(sandbox_scene_path(fn), media_type="image/png")
+
     @app.get("/api/story-sandbox/branches")
     async def story_sandbox_branches_endpoint(chapter: int, novel_id: str | None = None) -> dict:
         """Lists this chapter's (or free mode's, chapter=0) story lines. Lazily registers a

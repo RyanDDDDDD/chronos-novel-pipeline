@@ -13,6 +13,7 @@ import { ProfileMutationBubble } from '@/features/sandbox/components/ProfileMuta
 import { RecallContextBubble } from '@/shared/components/RecallContextBubble'
 import { RecalledSettingsBubble } from '@/shared/components/RecalledSettingsBubble'
 import { RollingSummaryBubble } from '@/features/sandbox/components/RollingSummaryBubble'
+import SceneImageRow from '@/features/sandbox/components/SceneImageRow'
 import { SceneStateBubble } from '@/features/sandbox/components/SceneStateBubble'
 import { SegmentLoadingRow } from '@/features/sandbox/components/SegmentLoadingRow'
 import { useSetupSkills } from '@/shared/queries/setup'
@@ -615,6 +616,7 @@ export function TurnSegments({
   pendingFields, forceOpen,
   characterNames, settingNames, loadingStatus,
   stateDeriveFields,
+  sceneImageChapter, sceneImageBranchId, onGenerateSceneImage,
 }: {
   round: Round
   hiddenCats: Set<TurnFilterCat>
@@ -648,6 +650,11 @@ export function TurnSegments({
    * StorySandboxPanel), never historical rounds. */
   loadingStatus?: string
   stateDeriveFields?: StateDeriveFieldSpec[]
+  /** Scene-image wiring -- all three must be present (and round.id set) for the 生图 row to
+   * render. Only ever passed for completed history rounds, never the streaming liveRound. */
+  sceneImageChapter?: number
+  sceneImageBranchId?: string
+  onGenerateSceneImage?: (roundId: string) => void
 }) {
   const fields = stateDeriveFields ?? BASELINE_STATE_DERIVE_FIELDS
   const characterStates = round.characterStates ?? {}
@@ -686,6 +693,16 @@ export function TurnSegments({
           styleGuardRewriting={styleGuardRewriting}
           characterNames={characterNames} settingNames={settingNames}
           loadingStatus={loadingStatus}
+        />
+      )}
+      {!hiddenCats.has('prose') && round.id && onGenerateSceneImage
+        && typeof sceneImageChapter === 'number' && sceneImageBranchId && (
+        <SceneImageRow
+          chapter={sceneImageChapter}
+          branchId={sceneImageBranchId}
+          roundId={round.id}
+          imageUrl={round.sceneImageUrl}
+          onGenerate={() => onGenerateSceneImage(round.id as string)}
         />
       )}
       {!hiddenCats.has('state') && (

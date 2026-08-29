@@ -80,6 +80,93 @@ async def test_generate_raises_on_empty_zip(monkeypatch):
         await provider.generate("1girl")
 
 
+def _png(w: int = 832, h: int = 1216) -> bytes:
+    from PIL import Image
+    b = io.BytesIO()
+    Image.new("RGB", (w, h), (1, 2, 3)).save(b, format="PNG")
+    return b.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_char_captions_go_into_v4_prompt(monkeypatch):
+    from media.portrait.novelai_provider import NovelAIImageProvider
+
+    captured = {}
+
+    async def fake_post(self, url, *, json=None, files=None, headers=None):
+        captured["json"] = json
+        captured["files"] = files
+        return httpx.Response(200, content=_zip_bytes(b"X"),
+                              request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    provider = NovelAIImageProvider(api_key="tok", model="nai-diffusion-4-5-full")
+    await provider.generate(
+        "tavern, 2girls",
+        char_captions=[
+            {"char_caption": "1girl, silver hair", "centers": [{"x": 0.5, "y": 0.5}]},
+            {"char_caption": "1girl, red hair", "centers": [{"x": 0.5, "y": 0.5}]},
+        ],
+    )
+    caps = captured["json"]["parameters"]["v4_prompt"]["caption"]["char_captions"]
+    assert [c["char_caption"] for c in caps] == ["1girl, silver hair", "1girl, red hair"]
+    neg = captured["json"]["parameters"]["v4_negative_prompt"]["caption"]["char_captions"]
+    assert [c["char_caption"] for c in neg] == ["", ""]
+    assert captured["files"] is None  # no references -> plain JSON
+
+
+@pytest.mark.asyncio
+async def test_precise_reference_sends_multipart(monkeypatch):
+    import hashlib
+
+    from media.portrait.novelai_provider import NovelAIImageProvider
+
+    captured = {}
+
+    async def fake_post(self, url, *, json=None, files=None, headers=None):
+        captured["json"] = json
+        captured["files"] = files
+        return httpx.Response(200, content=_zip_bytes(b"X"),
+                              request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    provider = NovelAIImageProvider(api_key="tok", model="nai-diffusion-4-5-full")
+    await provider.generate(
+        "tavern",
+        char_captions=[{"char_caption": "1girl", "centers": [{"x": 0.5, "y": 0.5}]}],
+        character_references=[_png()],
+        reference_strength=0.7,
+        reference_fidelity=1.0,
+    )
+    assert captured["json"] is None                       # multipart path
+    files = captured["files"]
+    assert "request" in files and "director_ref_0" in files
+    import json as _json
+    req = _json.loads(files["request"][1])
+    params = req["parameters"]
+    assert "director_reference_images" not in params      # stripped from JSON
+    cached = params["director_reference_images_cached"]
+    assert cached[0]["data"] == "director_ref_0"
+    prepped_bytes = files["director_ref_0"][1]
+    assert cached[0]["cache_secret_key"] == hashlib.sha256(prepped_bytes).hexdigest()
+    assert params["director_reference_strength_values"] == [0.7]
+    assert params["director_reference_secondary_strength_values"] == [0.0]
+    assert params["director_reference_information_extracted"] == [1]
+    assert params["director_reference_descriptions"][0]["caption"]["base_caption"] == "character"
+    assert params["normalize_reference_strength_multiple"] is True
+
+
+@pytest.mark.asyncio
+async def test_precise_reference_rejected_on_non_v45_model():
+    from media.portrait.novelai_provider import NovelAIImageProvider
+
+    provider = NovelAIImageProvider(api_key="tok", model="nai-diffusion-5-full")
+    with pytest.raises(RuntimeError, match="V4.5"):
+        await provider.generate("x", character_references=[_png()])
+
+
 @pytest.mark.asyncio
 async def test_generate_randomizes_seed_each_call(monkeypatch):
     from media.portrait.novelai_provider import NovelAIImageProvider
