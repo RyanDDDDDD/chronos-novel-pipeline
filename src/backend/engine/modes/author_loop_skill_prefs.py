@@ -32,6 +32,9 @@ _LLM_PARAM_NODE_IDS = frozenset({"director", "review", "state_derive"})
 _SANDBOX_LLM_PARAM_NODE_IDS = frozenset({
     "prose", "derive_char", "derive_scene", "summary_fold", "event_extract", "profile_mutate",
     "suggest", "dialogue_draft", "identify_cast", "selection_rewrite",
+    # scene_image carries only model_ref (image-gen entry binding for sandbox scene
+    # generation, not an LLM sampling call) -- same shape as import_llm_params.character_portrait.
+    "scene_image",
 })
 _STYLE_GUARD_LLM_PARAM_NODE_IDS = frozenset({"director"})
 _STYLE_GUARD_SANDBOX_LLM_PARAM_NODE_IDS = frozenset({
