@@ -40,6 +40,9 @@ export type Round = {
   /** Present on error rounds folded from story_sandbox_error when the backend supplied a
    * DerivationValidationError code -- drives the retry-derive button in StorySandboxPanel. */
   errorCode?: string
+  /** URL of the generated scene image for this round, merged in by StorySandboxPanel from a
+   * separate /api/story-sandbox/scene-images fetch (not part of the LangGraph turn state). */
+  sceneImageUrl?: string
 }
 
 /** Network calls for the story-sandbox feature: kept deliberately separate from the large

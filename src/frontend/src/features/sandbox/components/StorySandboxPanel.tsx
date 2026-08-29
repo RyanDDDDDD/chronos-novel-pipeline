@@ -26,6 +26,7 @@ import {
 import StorySandboxBranchModal from '@/features/sandbox/components/StorySandboxBranchModal'
 import StorySandboxBranchMenu from '@/features/sandbox/components/StorySandboxBranchMenu'
 import { formatRecalledMemoryLine } from '@/features/sandbox/utils/sandboxMemorySearch'
+import { fetchSceneImages, requestSceneImage } from '@/features/sandbox/queries/sceneImage'
 import { effectiveSandboxChapter, type SandboxMode } from '@/features/sandbox/utils/sandboxMode'
 import { detectRecognizedNames, type MentionCandidate } from '@/shared/components/mention/mentionCandidates'
 import type { Round } from '@/features/sandbox/hooks/useStorySandbox'
@@ -157,6 +158,9 @@ export default function StorySandboxPanel({
   const [selectedDirections, setSelectedDirections] = useState<string[]>([])
   const [branchModalMode, setBranchModalMode] = useState<'create' | 'rename' | null>(null)
   const [hiddenCats, setHiddenCats] = useState<Set<TurnFilterCat>>(new Set())
+  // roundId -> scene-image URL, fetched once per scope + refreshed on the WS done event. Kept
+  // out of Redux's turn state on purpose (it's a separate sidecar doc server-side).
+  const [sceneImages, setSceneImages] = useState<Record<string, string>>({})
   const [expandAll, setExpandAll] = useState<boolean | undefined>(undefined)
   const scopeKeyRef = useRef(`${novelId}:${chapter}:${branchId ?? ''}`)
   // Set right before onModeChange() so the next scope-switch effect run (chapter/free toggle
@@ -337,6 +341,41 @@ export default function StorySandboxPanel({
     ws.addEventListener('message', onMsg)
     return () => ws.removeEventListener('message', onMsg)
   }, [ws, queryClient, novelId, chapter, branchId, toastError])
+
+  // Scene images: fetch the whole map once per scope, then keep it fresh off the WS done event
+  // (a plain listener, separate from the story_sandbox_* handler above which ignores other types).
+  useEffect(() => {
+    let cancelled = false
+    const load = branchId
+      ? fetchSceneImages(chapter, branchId)
+      : Promise.resolve<Record<string, string>>({})
+    void load.then((map) => { if (!cancelled) setSceneImages(map) })
+    return () => { cancelled = true }
+  }, [chapter, branchId, novelId])
+
+  useEffect(() => {
+    if (!ws || !branchId) return
+    const onMsg = (event: MessageEvent) => {
+      let parsed: { type?: string; error?: string }
+      try {
+        parsed = JSON.parse(event.data)
+      } catch {
+        return
+      }
+      if (parsed?.type === 'sandbox_scene_image_done' && !parsed.error) {
+        void fetchSceneImages(chapter, branchId).then(setSceneImages)
+      }
+    }
+    ws.addEventListener('message', onMsg)
+    return () => ws.removeEventListener('message', onMsg)
+  }, [ws, chapter, branchId])
+
+  const handleGenerateSceneImage = (roundId: string): void => {
+    if (!branchId) return
+    void requestSceneImage(chapter, branchId, roundId).then((res) => {
+      if (!res.ok) toastError('场景生图请求失败，请重试')
+    })
+  }
 
   const toggleDirection = (text: string) => {
     setSelectedDirections((prev) => (
@@ -621,7 +660,10 @@ export default function StorySandboxPanel({
               />
             )}
             <TurnSegments
-              round={r} hiddenCats={hiddenCats}
+              round={r.id ? { ...r, sceneImageUrl: sceneImages[r.id] } : r} hiddenCats={hiddenCats}
+              sceneImageChapter={chapter}
+              sceneImageBranchId={branchId ?? undefined}
+              onGenerateSceneImage={handleGenerateSceneImage}
               selectedDirections={selectedDirectionsSet} onToggleDirection={toggleDirection}
               isLatest={i === state.rounds.length - 1 && !state.liveRound}
               onRegenerate={handleRegenerate}
