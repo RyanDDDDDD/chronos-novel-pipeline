@@ -237,8 +237,18 @@ def test_rename_novel_title_updates_novel_json(tmp_path, monkeypatch):
     assert get_novel_name("novel-1") == "星海彼岸的旅人"
 
 
-def test_set_source_franchise_persists_and_reextracts(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_set_source_franchise_persists_and_reextracts(tmp_path, monkeypatch):
+    """Regression test: set_source_franchise must be declared async (like add_character /
+    edit_character) so LangGraph's ToolNode awaits it directly on the running event loop.
+    A sync tool gets offloaded to a thread-pool executor by langchain-core's default
+    BaseTool._arun, and that executor thread has no running asyncio loop -- so the real
+    SCHEDULER.schedule_once() call inside schedule_extract_visual_tags_all() (which reads
+    asyncio.get_running_loop().time()) blew up with RuntimeError('no running event loop').
+    Deliberately does NOT monkeypatch schedule_extract_visual_tags_all/schedule_extract_visual_tags
+    so this exercises the real scheduler call path."""
     from api.services.novels import get_source_franchise
+    from api.services.scheduler import SCHEDULER
     from engine.setup_chat.tools import set_source_franchise
     from tests.conftest import seed_registry_novel
 
@@ -246,17 +256,18 @@ def test_set_source_franchise_persists_and_reextracts(tmp_path, monkeypatch):
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(novels_root))
     seed_registry_novel(novels_root, "novel-1", "小说")
     monkeypatch.setattr("utils.paths.active_novel_id", lambda: "novel-1")
-    reextracted = {"hit": False}
-    monkeypatch.setattr(
-        "engine.setup_chat.character_visual_tags.schedule_extract_visual_tags_all",
-        lambda: reextracted.__setitem__("hit", True),
-    )
 
-    result = set_source_franchise.invoke({"franchise": "  Blue Archive  "})
+    class _FakeRepo:
+        def list_raw(self):
+            return [{"name": "甲"}]
+
+    monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
+
+    result = await set_source_franchise.ainvoke({"franchise": "  Blue Archive  "})
 
     assert "Blue Archive" in result
     assert get_source_franchise("novel-1") == "Blue Archive"
-    assert reextracted["hit"] is True
+    assert any(ev.name == "character-visual-tags:novel-1:甲" for ev in SCHEDULER._heap)
 
 
 def test_set_portrait_prompt_updates_only_given_fields_no_side_effects(monkeypatch):
