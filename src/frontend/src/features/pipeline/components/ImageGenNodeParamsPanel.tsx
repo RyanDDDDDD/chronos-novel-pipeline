@@ -16,9 +16,15 @@ interface Props {
   labels: Record<string, string>
   selectedNodeId: string | null
   novelId: string
+  /** Which dialogue-config bucket the model_ref binding lives in. `import_llm_params` for the
+   * skeleton tab's 立绘生成 node; `sandbox_llm_params` for the sandbox tab's 场景生图 node. The
+   * shared style-preset / style-prompt / negative-prompt fields below are global either way. */
+  configKey?: 'import_llm_params' | 'sandbox_llm_params'
 }
 
-export default function ImageGenNodeParamsPanel({ nodeIds, labels, selectedNodeId, novelId }: Props) {
+export default function ImageGenNodeParamsPanel({
+  nodeIds, labels, selectedNodeId, novelId, configKey = 'import_llm_params',
+}: Props) {
   const { data: cfg } = useAuthorLoopDialogueConfig(novelId)
   const save = useSetAuthorLoopDialogueConfig(novelId)
   const { data: registry } = useImageGenModelRegistry()
@@ -36,7 +42,7 @@ export default function ImageGenNodeParamsPanel({ nodeIds, labels, selectedNodeI
   if (selectedNodeId === null || !nodeIds.includes(selectedNodeId)) return null
   if (!cfg) return null
 
-  const nodeParams = (cfg.config.import_llm_params ?? {}) as Record<string, LlmNodeParams>
+  const nodeParams = (cfg.config[configKey] ?? {}) as Record<string, LlmNodeParams>
   const current: LlmNodeParams = localOverrides[selectedNodeId] ?? nodeParams[selectedNodeId] ?? {}
 
   const setModelRef = (modelRef: string | null) => {
@@ -44,7 +50,7 @@ export default function ImageGenNodeParamsPanel({ nodeIds, labels, selectedNodeI
     if (modelRef) next.model_ref = modelRef
     else delete next.model_ref
     setLocalOverrides(prev => ({ ...prev, [selectedNodeId]: next }))
-    save.mutate({ dialogue: { import_llm_params: { ...nodeParams, [selectedNodeId]: next } } })
+    save.mutate({ dialogue: { [configKey]: { ...nodeParams, [selectedNodeId]: next } } })
   }
 
   const style = styleDraft ?? cfg.config.portrait_style_prompt

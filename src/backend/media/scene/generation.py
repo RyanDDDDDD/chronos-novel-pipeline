@@ -45,20 +45,27 @@ async def _on_timeout(novel_id: str, chapter: int, branch_id: str, round_id: str
 
 
 def _resolve_scene_image_entry() -> dict | None:
-    """The image_gen entry bound to the sandbox 'scene_image' node. Returns None when
-    unbound, unknown, or not a NovelAI entry (scene gen needs V4.5 Precise Reference)."""
+    """The image_gen entry to use for sandbox scene generation. Resolution order:
+    1. the entry bound to the sandbox 'scene_image' node (sandbox_llm_params.scene_image);
+    2. failing that, the sole image_gen entry if exactly one exists (parity with
+       character_portrait's _resolve_image_gen_entry -- so a single-model setup works with
+       no extra binding step).
+    Either way the entry must be a NovelAI one -- scene gen needs V4.5 Precise Reference,
+    which no other provider implements. Returns None when nothing usable is configured."""
     from domain.model_catalog import load_custom_models
     from engine.modes.author_loop_skill_prefs import load_dialogue_prefs
 
     node = load_dialogue_prefs().get("sandbox_llm_params", {}).get("scene_image", {})
     model_ref = node.get("model_ref") if isinstance(node, dict) else None
-    if not model_ref:
-        return None
-    entry = next(
-        (m for m in load_custom_models()
-         if m.get("provider") == "image_gen" and m.get("id") == model_ref),
-        None,
-    )
+    image_gen_entries = [m for m in load_custom_models() if m.get("provider") == "image_gen"]
+
+    if model_ref:
+        entry = next((m for m in image_gen_entries if m.get("id") == model_ref), None)
+    elif len(image_gen_entries) == 1:
+        entry = image_gen_entries[0]
+    else:
+        entry = None
+
     if entry is None or entry.get("service") != "novelai":
         return None
     return entry
@@ -158,8 +165,9 @@ async def generate_sandbox_scene_image(
             entry = _resolve_scene_image_entry()
             if entry is None:
                 await hub.broadcast({"type": "sandbox_scene_image_done", **base_event,
-                                     "error": "未配置场景生图模型（需 NovelAI V4.5），请到"
-                                              "「流水线→对话」页给「场景生图」绑定"})
+                                     "error": "未配置场景生图模型（需 NovelAI V4.5）：先在"
+                                              "「服务」页加一个 NovelAI 生图模型，再到"
+                                              "「流水线 → 故事沙盒」画布点「场景生图」节点绑定"})
                 return
 
             mem = _memory_entry(turn)

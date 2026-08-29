@@ -2,13 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { SANDBOX_RUN_STAGES, SANDBOX_RUN_EDGES } from './runStages'
 
 describe('sandboxRunStages', () => {
-  it('10 个节点，id 唯一', () => {
-    expect(SANDBOX_RUN_STAGES).toHaveLength(10)
-    expect(new Set(SANDBOX_RUN_STAGES.map(s => s.id)).size).toBe(10)
+  it('11 个节点，id 唯一', () => {
+    expect(SANDBOX_RUN_STAGES).toHaveLength(11)
+    expect(new Set(SANDBOX_RUN_STAGES.map(s => s.id)).size).toBe(11)
     expect(SANDBOX_RUN_STAGES.map(s => s.id)).not.toContain('event_log')
     expect(SANDBOX_RUN_STAGES.map(s => s.id)).toEqual(
       expect.arrayContaining([
         'summary_fold', 'event_extract', 'dialogue_draft', 'identify_cast', 'selection_rewrite',
+        'scene_image',
       ]),
     )
   })
@@ -28,10 +29,12 @@ describe('sandboxRunStages', () => {
     )
   })
 
-  it('identify_cast/selection_rewrite 用虚线（async: true）分别指向 dialogue_draft/prose', () => {
+  it('identify_cast/selection_rewrite/scene_image 用虚线（async: true）分别指向 dialogue_draft/prose', () => {
     const identifyEdge = SANDBOX_RUN_EDGES.find(e => e.source === 'identify_cast')
     expect(identifyEdge).toEqual({ source: 'identify_cast', target: 'dialogue_draft', async: true })
     const selectionRewriteEdge = SANDBOX_RUN_EDGES.find(e => e.target === 'selection_rewrite')
     expect(selectionRewriteEdge).toEqual({ source: 'prose', target: 'selection_rewrite', async: true })
+    const sceneImageEdge = SANDBOX_RUN_EDGES.find(e => e.target === 'scene_image')
+    expect(sceneImageEdge).toEqual({ source: 'prose', target: 'scene_image', async: true })
   })
 })

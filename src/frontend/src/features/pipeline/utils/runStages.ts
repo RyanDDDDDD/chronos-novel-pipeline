@@ -2,9 +2,10 @@
 // summary_fold, event_extract->profile_mutate} -> suggest（四路 fan-in，非 fire-and-forget，无
 // async 虚线的实边）。对照 engine/story_sandbox/graph.py 的 _compile_graph 常规轮次拓扑（不含仅
 // 开场触发一次的 init_char/init_scene，见该文件模块注释）。identify_cast（仅开场轮）、
-// selection_rewrite（导演选中一段正文要求局部重写，完全独立于 run_turn 的按需触发流程）都不是
-// 常规轮次拓扑的一部分，用 `async: true` 画成虚线——分别指向 dialogue_draft/prose，表示"条件/
-// 按需触发，不是每轮都走"，不是真实的并发边。
+// selection_rewrite（导演选中一段正文要求局部重写，完全独立于 run_turn 的按需触发流程）、
+// scene_image（某一轮点「生图」给该轮场景生成一张插画，走 NovelAI V4.5 + Precise Reference，
+// 只是个生图模型绑定节点，不接 NodeLlmParamsPanel）都不是常规轮次拓扑的一部分，用 `async: true`
+// 画成虚线——分别指向 dialogue_draft/prose，表示"条件/按需触发，不是每轮都走"，不是真实的并发边。
 // 与 dialogueLoopStages.ts（写作运行时）/skeletonExpansionStages.ts（骨架扩写）平级，同为
 // PipelineWorkflowConfigView.tsx 的第三个 tab。
 //
@@ -25,6 +26,7 @@ export const SANDBOX_RUN_STAGES: DialogueStageDef[] = [
   { id: 'derive_scene', label: '场景状态推演', kind: 'mechanism', col: 1, lane: 1, position: { x: 1 * DIALOGUE_STAGE_X_STEP, y: DIALOGUE_STAGE_AXIS_Y } },
   { id: 'summary_fold', label: '剧情摘要折叠', kind: 'mechanism', col: 1, lane: 2, position: { x: 1 * DIALOGUE_STAGE_X_STEP, y: DIALOGUE_STAGE_AXIS_Y } },
   { id: 'selection_rewrite', label: '选中片段重写（按需触发）', kind: 'mechanism', col: 1, lane: 3, position: { x: 1 * DIALOGUE_STAGE_X_STEP, y: DIALOGUE_STAGE_AXIS_Y } },
+  { id: 'scene_image', label: '场景生图（按需触发）', kind: 'mechanism', col: 1, lane: -2, position: { x: 1 * DIALOGUE_STAGE_X_STEP, y: DIALOGUE_STAGE_AXIS_Y } },
   { id: 'profile_mutate', label: '角色档案演变', kind: 'mechanism', col: 2, lane: 0, position: { x: 2 * DIALOGUE_STAGE_X_STEP, y: DIALOGUE_STAGE_AXIS_Y } },
   { id: 'suggest', label: '剧情选项建议', kind: 'mechanism', col: 3, lane: 0, position: { x: 3 * DIALOGUE_STAGE_X_STEP, y: DIALOGUE_STAGE_AXIS_Y } },
 ]
@@ -37,6 +39,7 @@ export const SANDBOX_RUN_EDGES: DialogueStageEdge[] = [
   { source: 'prose', target: 'event_extract' },
   { source: 'prose', target: 'summary_fold' },
   { source: 'prose', target: 'selection_rewrite', async: true },
+  { source: 'prose', target: 'scene_image', async: true },
   { source: 'event_extract', target: 'profile_mutate' },
   { source: 'derive_char', target: 'suggest' },
   { source: 'derive_scene', target: 'suggest' },

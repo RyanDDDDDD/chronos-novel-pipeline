@@ -129,3 +129,38 @@ def test_resolve_scene_image_entry_rejects_non_novelai(monkeypatch):
         lambda: [{"id": "m1", "provider": "image_gen", "service": "novita"}],
     )
     assert generation._resolve_scene_image_entry() is None
+
+
+def test_resolve_scene_image_entry_falls_back_to_sole_novelai_entry(monkeypatch):
+    """No explicit scene_image binding + exactly one image_gen entry (NovelAI) -> use it,
+    mirroring character_portrait's single-entry fallback."""
+    from media.scene import generation
+
+    monkeypatch.setattr(
+        "engine.modes.author_loop_skill_prefs.load_dialogue_prefs",
+        lambda: {"sandbox_llm_params": {}},
+    )
+    monkeypatch.setattr(
+        "domain.model_catalog.load_custom_models",
+        lambda: [{"id": "only", "provider": "image_gen", "service": "novelai"}],
+    )
+    assert generation._resolve_scene_image_entry() == {
+        "id": "only", "provider": "image_gen", "service": "novelai",
+    }
+
+
+def test_resolve_scene_image_entry_no_fallback_when_multiple_entries(monkeypatch):
+    from media.scene import generation
+
+    monkeypatch.setattr(
+        "engine.modes.author_loop_skill_prefs.load_dialogue_prefs",
+        lambda: {"sandbox_llm_params": {}},
+    )
+    monkeypatch.setattr(
+        "domain.model_catalog.load_custom_models",
+        lambda: [
+            {"id": "a", "provider": "image_gen", "service": "novelai"},
+            {"id": "b", "provider": "image_gen", "service": "novelai"},
+        ],
+    )
+    assert generation._resolve_scene_image_entry() is None
