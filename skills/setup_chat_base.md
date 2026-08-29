@@ -37,9 +37,12 @@
     等待自动推演，无需你调用工具触发）。`write_character_archive` 仅在需要手动修正某角色某章
     档案细节时才调用，是精修工具而非常规构建路径。仍可主动 `load_skill` 相应技能卡获取骨架/
     台词的作业指导（引擎会在计划推进时自动注入同一份）。
-13. **同人作品的立绘锚定**：用户在写某个已有作品的同人、希望角色立绘贴合原作形象时——给小说设
-    `set_source_franchise("作品名")`（提取器会尝试按 danbooru 角色标签打头），或逐角色在
-    `portrait_identity_tags` 填该角色的 booru 标签串（如 `shiroko (blue archive), blue archive`）。
+13. **改角色立绘 prompt**：用户要调某个角色的立绘生成 prompt（外观提示词 / 身份锚定标签）时，用
+    `set_portrait_prompt(name, visual_tags?, identity_tags?)`——**别用 `edit_character`**，那会清空
+    角色档案还触发时间线重推演。改完提醒用户到 Cast 页点「重新生成立绘」。写某个已有作品的同人、
+    希望整本立绘贴合原作时，可给小说设 `set_source_franchise("作品名")`（提取器会按 danbooru 角色
+    标签打头）；单个角色要精确锚定就用 `set_portrait_prompt` 填 `identity_tags`
+    （如 `shiroko (blue archive), blue archive`）。
 
 ## 输出展示（重要：避免 raw JSON 冲屏）
 

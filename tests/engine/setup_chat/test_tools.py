@@ -259,6 +259,54 @@ def test_set_source_franchise_persists_and_reextracts(tmp_path, monkeypatch):
     assert reextracted["hit"] is True
 
 
+def test_set_portrait_prompt_updates_only_given_fields_no_side_effects(monkeypatch):
+    from engine.setup_chat.tools import set_portrait_prompt
+
+    saved = {}
+
+    class _FakeRepo:
+        def list_raw(self):
+            return [{
+                "name": "甲", "given_name": "甲",
+                "portrait_visual_tags": "1girl, old", "portrait_identity_tags": "old anchor",
+                "portrait_path": "甲-1.png",
+            }]
+
+        def upsert_character(self, char):
+            saved["char"] = char
+
+    monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
+    # any archive-clear / timeline-cascade / re-extract call would be a bug here
+    for target in (
+        "engine.archive.archive_view.delete_character_archives",
+        "engine.setup_chat.timeline_auto.schedule_timeline_cascade",
+        "engine.setup_chat.character_visual_tags.schedule_extract_visual_tags",
+    ):
+        monkeypatch.setattr(target, _boom, raising=False)
+
+    out = set_portrait_prompt.invoke({"name": "甲", "identity_tags": "  shiroko (blue archive)  "})
+
+    assert "甲" in out
+    assert saved["char"]["portrait_identity_tags"] == "shiroko (blue archive)"
+    assert saved["char"]["portrait_visual_tags"] == "1girl, old"  # untouched
+    assert saved["char"]["portrait_path"] == "甲-1.png"  # untouched
+
+
+def test_set_portrait_prompt_unknown_character(monkeypatch):
+    from engine.setup_chat.tools import set_portrait_prompt
+
+    class _FakeRepo:
+        def list_raw(self):
+            return []
+
+    monkeypatch.setattr("repositories.get_lore_repo", _FakeRepo)
+    assert "未找到" in set_portrait_prompt.invoke({"name": "无此人", "visual_tags": "x"})
+
+
+def _boom(*_a, **_k):
+    raise AssertionError("set_portrait_prompt must not trigger this side effect")
+
+
 @pytest.mark.asyncio
 async def test_auto_build_setup_logs_each_internal_llm_call(monkeypatch):
     """auto_build_setup's internal call_llm previously called llm.ainvoke() with zero
@@ -409,7 +457,10 @@ async def test_add_character_core_schedules_visual_tags_extraction(monkeypatch, 
 
 
 @pytest.mark.asyncio
-async def test_edit_character_core_reextracts_when_physique_changes(monkeypatch):
+async def test_edit_character_core_never_reextracts_visual_tags(monkeypatch):
+    """edit_character carries portrait_visual_tags forward verbatim -- even a physique change
+    no longer schedules a background re-extraction (that would clobber a hand-tuned prompt).
+    A stale value is re-derived lazily on the next portrait regeneration instead."""
     from engine.setup_chat import tools
 
     existing = {
@@ -465,8 +516,8 @@ async def test_edit_character_core_reextracts_when_physique_changes(monkeypatch)
     )
 
     assert ok is True
-    assert schedule_calls == ["甲"]
-    assert "portrait_visual_tags" not in saved["roster"][0]
+    assert schedule_calls == []
+    assert saved["roster"][0]["portrait_visual_tags"] == "1girl, old tags"
 
 
 @pytest.mark.asyncio
@@ -597,11 +648,9 @@ async def test_edit_character_core_applies_manual_visual_tags_override(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_edit_character_core_appearance_change_still_reextracts_over_manual_override(monkeypatch):
-    """A same-edit appearance change (physique/gender/clothing) still wins over a manually
-    typed portrait_visual_tags value -- the manual value is saved immediately but the
-    scheduled re-extraction will supersede it shortly after, since the appearance is what
-    actually changed."""
+async def test_edit_character_core_manual_visual_tags_survive_appearance_change(monkeypatch):
+    """An explicit portrait_visual_tags value from the cast panel is saved as-is and stays --
+    a same-edit appearance change no longer schedules a re-extraction that would overwrite it."""
     from engine.setup_chat import tools
 
     existing = {
@@ -658,5 +707,5 @@ async def test_edit_character_core_appearance_change_still_reextracts_over_manua
     )
 
     assert ok is True
-    assert schedule_calls == ["甲"]
+    assert schedule_calls == []
     assert saved["roster"][0]["portrait_visual_tags"] == "1girl, hand-typed tags"
