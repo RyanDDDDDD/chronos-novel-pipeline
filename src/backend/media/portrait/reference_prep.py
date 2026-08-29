@@ -21,7 +21,7 @@ def fit_to_director_canvas(png_bytes: bytes) -> bytes:
     cw, ch = min(_CANVASES, key=lambda c: abs((c[0] / c[1]) - src_ar))
     scale = min(cw / img.width, ch / img.height)
     new_w, new_h = max(1, round(img.width * scale)), max(1, round(img.height * scale))
-    resized = img.resize((new_w, new_h), Image.LANCZOS)
+    resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
     canvas = Image.new("RGB", (cw, ch), (0, 0, 0))
     canvas.paste(resized, ((cw - new_w) // 2, (ch - new_h) // 2))
     out = io.BytesIO()
