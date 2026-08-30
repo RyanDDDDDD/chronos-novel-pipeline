@@ -40,7 +40,8 @@ async def test_insert_chapter_shifts_and_writes_new_slot(tmp_path, monkeypatch):
         })
         assert "已插入" in msg or "第 2 章" in msg
 
-        chapters = sorted(c["chapter"] for c in get_plot_repo().list_raw())
+        # list_raw is chapter-ordered even though the inserted chapter has the highest seq
+        chapters = [c["chapter"] for c in get_plot_repo().list_raw()]
         assert chapters == [1, 2, 3]
         by_ch = {c["chapter"]: c for c in get_plot_repo().list_raw()}
         assert by_ch[2]["title"] == "新章"

@@ -223,14 +223,12 @@ class SqlitePlotRepository:
             xp = row.data_json.get("core_xp")
             return [str(x) for x in xp] if isinstance(xp, list) else []
 
-    def list_plot(self) -> list[dict[str, Any]]:
+    def list_raw(self) -> list[dict[str, Any]]:
+        # Chapter order, not PlotChapter.seq: seq is just save_all insertion order, and
+        # insert_chapter appends the new chapter last, so a mid-book insert leaves it with the
+        # highest seq. Chapters are always displayed/consumed in chapter-number order.
         with session_for(self._nid) as s:
             rows = s.exec(select(PlotChapter).order_by(col(PlotChapter.chapter))).all()
-            return [dict(r.data_json) for r in rows]
-
-    def list_raw(self) -> list[dict[str, Any]]:
-        with session_for(self._nid) as s:
-            rows = s.exec(select(PlotChapter).order_by(col(PlotChapter.seq))).all()
             return [dict(r.data_json) for r in rows]
 
     def save_all(self, chapters: list[dict[str, Any]] | dict[str, Any], path: str | None = None) -> None:
@@ -267,7 +265,7 @@ class SqlitePlotRepository:
         ch = chapter_data.get("chapter")
         if ch is None:
             return
-        existing = self.list_plot()
+        existing = self.list_raw()
         kept = [p for p in existing if p.get("chapter") != ch]
         kept.append(chapter_data)
         kept.sort(key=lambda p: p.get("chapter", 0))
