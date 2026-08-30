@@ -1240,7 +1240,7 @@ def rename_novel_title(new_title: str) -> str:
 
 
 @tool(args_schema=SetSourceFranchiseArgs)
-def set_source_franchise(franchise: str) -> str:
+async def set_source_franchise(franchise: str) -> str:
     """设定这本小说的原作出处（同人）。写盘后重新排队全体角色的立绘提示词提取，让立绘按原作
     danbooru 标签锚定原作形象。留空字符串=原创作品。仅在用户明确同意后调用。"""
     from api.services.novels import set_source_franchise as _set
