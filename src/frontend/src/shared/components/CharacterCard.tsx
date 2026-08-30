@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import type { CharacterArchive, RelationshipGraph } from '@/shared/types'
 import { CharacterMarkdownContent } from '@/shared/components/CharacterMarkdownContent'
+import PortraitLightbox from '@/shared/components/PortraitLightbox'
 import { buildCharacterArchiveMarkdown } from '@/shared/utils/characterArchiveMarkdown'
 import { castPortraitUrl } from '@/features/setup/utils/castPortraitUrl'
 import { Button } from '@/shared/components/ui/button'
@@ -16,11 +18,17 @@ interface Props {
    * portrait_path itself -- that's a live lore/cast attribute, not a per-chapter derived
    * snapshot field -- so callers cross-reference the cast roster by name and pass this down. */
   hasPortrait?: boolean
+  /** Archive page only: when expanded, show the full portrait in a left column (click to
+   * zoom). Left off in the narrow author/sandbox side panels, which keep just the header
+   * thumbnail. */
+  showExpandedPortrait?: boolean
 }
 
 export default function CharacterCard({
   character, isOpen, onToggle, relationshipGraph, highlightedFields, hasPortrait = false,
+  showExpandedPortrait = false,
 }: Props) {
+  const [lightboxOpen, setLightboxOpen] = useState(false)
   const markdown = buildCharacterArchiveMarkdown(character, relationshipGraph)
   // 'x' is a constant placeholder, not the real portrait_path (CharacterArchive doesn't carry
   // it -- see the hasPortrait doc above). The file itself still resolves server-side by
@@ -45,7 +53,11 @@ export default function CharacterCard({
           ▶
         </span>
         {portraitUrl && (
-          <img src={portraitUrl} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" />
+          <img
+            src={portraitUrl}
+            alt=""
+            className="h-10 w-10 shrink-0 rounded-md object-cover object-top"
+          />
         )}
         <div className="min-w-0 flex-1 flex items-center gap-2">
           <span className="text-sm font-semibold text-slate-800 shrink-0">{character.name}</span>
@@ -57,9 +69,35 @@ export default function CharacterCard({
         </div>
       </Button>
       {isOpen && (
-        <div className="border-t border-slate-100 px-3.5 pb-3.5 pt-2 text-sm text-[var(--c-text-secondary)]">
-          <CharacterMarkdownContent content={markdown} highlightedFields={highlightedFields} />
+        <div className="border-t border-slate-100 px-3.5 pb-3.5 pt-3 text-sm text-[var(--c-text-secondary)]">
+          <div className="flex flex-col gap-4 sm:flex-row">
+            {showExpandedPortrait && portraitUrl && (
+              <button
+                type="button"
+                onClick={() => setLightboxOpen(true)}
+                aria-label={`查看${character.name}立绘大图`}
+                className="block w-32 shrink-0 self-start overflow-hidden rounded-md border border-[var(--c-border)] bg-[var(--c-surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-focus-ring)] sm:sticky sm:top-2 sm:w-44"
+              >
+                <img
+                  src={portraitUrl}
+                  alt={`${character.name}立绘`}
+                  className="aspect-[2/3] w-full object-contain"
+                />
+              </button>
+            )}
+            <div className="min-w-0 flex-1">
+              <CharacterMarkdownContent content={markdown} highlightedFields={highlightedFields} />
+            </div>
+          </div>
         </div>
+      )}
+      {showExpandedPortrait && portraitUrl && (
+        <PortraitLightbox
+          src={portraitUrl}
+          alt={`${character.name}立绘`}
+          open={lightboxOpen}
+          onOpenChange={setLightboxOpen}
+        />
       )}
     </section>
   )

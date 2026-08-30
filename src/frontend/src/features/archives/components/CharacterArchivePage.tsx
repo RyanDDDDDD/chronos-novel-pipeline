@@ -171,6 +171,7 @@ export default function CharacterArchivePage({ embedded = false }: Props) {
                 onToggle={() => toggleExpand(c.name)}
                 relationshipGraph={relationshipGraph}
                 hasPortrait={portraitByName.get(c.name) ?? false}
+                showExpandedPortrait
               />
             ))
           )}
