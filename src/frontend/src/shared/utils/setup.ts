@@ -22,7 +22,8 @@ export async function fetchCast(): Promise<CastCharacter[]> {
 export async function fetchPlot(): Promise<PlotChapter[]> {
   const res = await fetch('/api/setup/plot')
   const body = await res.json().catch(() => ({}))
-  return body.chapters ?? []
+  const chapters: PlotChapter[] = body.chapters ?? []
+  return [...chapters].sort((a, b) => a.chapter - b.chapter)
 }
 
 export async function fetchCustomFields(): Promise<CustomFieldSpec[]> {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { fetchCast, fetchSetupChatHistory } from './setup'
+import { fetchCast, fetchPlot, fetchSetupChatHistory } from './setup'
 
 describe('fetchCast', () => {
   it('sorts the returned roster by name regardless of API/storage order', async () => {
@@ -18,6 +18,26 @@ describe('fetchCast', () => {
     vi.spyOn(global, 'fetch').mockResolvedValue({ json: async () => ({}) } as Response)
 
     expect(await fetchCast()).toEqual([])
+  })
+})
+
+describe('fetchPlot', () => {
+  it('sorts chapters by chapter number regardless of API order', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      json: async () => ({
+        chapters: [{ chapter: 3 }, { chapter: 1 }, { chapter: 2 }],
+      }),
+    } as Response)
+
+    const result = await fetchPlot()
+
+    expect(result.map((c) => c.chapter)).toEqual([1, 2, 3])
+  })
+
+  it('defaults to an empty array when chapters is absent', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({ json: async () => ({}) } as Response)
+
+    expect(await fetchPlot()).toEqual([])
   })
 })
 

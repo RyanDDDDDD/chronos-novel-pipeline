@@ -36,6 +36,17 @@ def test_plot_repo_roundtrip(novel_engine):
     assert raw[0]["chapter"] == 1
 
 
+def test_list_raw_is_chapter_ordered_regardless_of_seq(novel_engine):
+    """insert_chapter appends the new chapter to the end of the list it hands save_all, so a
+    mid-book insert leaves that chapter with the highest seq. list_raw must still return
+    chapters in chapter-number order (the /api/setup/plot dropdown trusts this order)."""
+    repo = SqlitePlotRepository("n1")
+    # save_all assigns seq by list position -> seq order here is 3, 1, 2
+    repo.save_all([{"chapter": 3}, {"chapter": 1}, {"chapter": 2}])
+
+    assert [c["chapter"] for c in repo.list_raw()] == [1, 2, 3]
+
+
 def test_save_all_diff_and_cascade(novel_engine):
     repo = SqlitePlotRepository("n1")
     repo.save_all([{"chapter": 1}, {"chapter": 2}])
