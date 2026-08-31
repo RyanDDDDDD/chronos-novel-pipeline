@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import json
 
 import pytest
@@ -30,7 +29,10 @@ def novel(monkeypatch, tmp_path):
     (tmp_path / nid / "chapters").mkdir(parents=True)
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
     monkeypatch.setenv("CHRONOS_ACTIVE_NOVEL", nid)
-    monkeypatch.setattr("utils.paths.use_novel", lambda _id: contextlib.nullcontext())
+    # NB: do NOT patch utils.paths.use_novel here -- the real context manager works fine in
+    # tests (it just sets/resets a ContextVar), and patching it globally leaks into any module
+    # that binds `use_novel` at import time during this test (e.g. api.services.message_hub on
+    # first import), breaking unrelated later tests. See the sibling fix in test_generation.py.
     hub = _Hub()
     monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
     return nid, tmp_path, hub

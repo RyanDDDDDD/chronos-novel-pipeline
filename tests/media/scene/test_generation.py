@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import contextlib
-
 import pytest
 
 
@@ -20,7 +18,9 @@ def wired(monkeypatch, tmp_path):
     (tmp_path / nid / "chapters").mkdir(parents=True)
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
     monkeypatch.setenv("CHRONOS_ACTIVE_NOVEL", nid)
-    monkeypatch.setattr("utils.paths.use_novel", lambda _id: contextlib.nullcontext())
+    # NB: do NOT patch utils.paths.use_novel -- the real context manager is fine in tests, and
+    # patching it globally leaks into modules that bind `use_novel` at import time during this
+    # test (api.services.message_hub on first import), breaking unrelated later tests.
 
     hub = _Hub()
     monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
@@ -103,7 +103,6 @@ async def test_generate_scene_image_round_not_found(monkeypatch, tmp_path):
     (tmp_path / "n" / "chapters").mkdir(parents=True)
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
     monkeypatch.setenv("CHRONOS_ACTIVE_NOVEL", "n")
-    monkeypatch.setattr("utils.paths.use_novel", lambda _id: contextlib.nullcontext())
     hub = _Hub()
     monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
