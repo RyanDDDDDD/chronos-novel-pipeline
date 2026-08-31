@@ -12,6 +12,7 @@ import {
 } from '@/shared/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/components/ui/tooltip'
 import ServiceStatusIcons from '@/shared/components/ServiceStatusIcons'
+import CloudAuthControl from '@/features/services/components/CloudAuthControl'
 import { useNovels, useActiveNovelId, useNovelActions, useNovelStatusSnapshot } from '@/shared/queries/novels'
 import { selectNovelRunStatus, novelStatusAcknowledged } from '@/shared/store/novelStatusSlice'
 import type { AppDispatch } from '@/shared/store/store'
@@ -122,7 +123,8 @@ export default function NovelRail() {
             </Tooltip>
           ))}
         </div>
-        <div className="shrink-0 border-t border-slate-100 pt-1 w-full flex justify-center">
+        <div className="shrink-0 border-t border-slate-100 pt-1 w-full flex flex-col items-center gap-1">
+          <CloudAuthControl collapsed />
           <ServiceStatusIcons collapsed />
         </div>
         <div className="shrink-0 flex flex-col items-center gap-1 mt-1 w-full px-1">
@@ -238,6 +240,7 @@ export default function NovelRail() {
       </div>
 
       <div className="shrink-0 border-t border-slate-100">
+        <CloudAuthControl collapsed={false} />
         <ServiceStatusIcons collapsed={false} />
       </div>
 

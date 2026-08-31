@@ -222,4 +222,12 @@ describe('listeners: cloud auth OAuth outcome toasts', () => {
 
     expect(toast.error).toHaveBeenCalledWith('登录超时，请重试', { duration: 7000 })
   })
+
+  it('toasts on logout', () => {
+    const store = buildTestStore()
+
+    store.dispatch(wsEventReceived({ type: 'cloud_auth_logged_out' }))
+
+    expect(toast.success).toHaveBeenCalledWith('已登出 Chronos 账号', { duration: 5000 })
+  })
 })
