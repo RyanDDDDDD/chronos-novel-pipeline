@@ -12,7 +12,6 @@ import asyncio
 from loguru import logger
 from utils.paths import use_novel
 
-from media.portrait.gate import IMAGE_GEN_GATE
 from media.portrait.provider_factory import build_image_provider
 from media.scene._shared import (
     _MAX_REFERENCES,
@@ -88,7 +87,11 @@ def _memory_entry(turn: dict) -> dict:
 async def generate_sandbox_scene_image(
     novel_id: str, chapter: int, branch_id: str, round_id: str,
 ) -> None:
+    # IMAGE_GEN_GATE local so tests' _instant_image_gen_gate fixture (which swaps the
+    # module singleton) takes effect -- a module-level binding would capture the real gate.
     from api.routes import _hub_instance
+
+    from media.portrait.gate import IMAGE_GEN_GATE
 
     hub = _hub_instance()
     base_event = {
