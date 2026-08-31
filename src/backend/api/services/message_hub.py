@@ -629,6 +629,9 @@ Start the main writer's paragraph-by-paragraph writing cycle: progress/paragraph
         except FileNotFoundError:
             pass
 
+        from media.scene.author_store import clear_author_stage_scene_images
+        clear_author_stage_scene_images(chapter)
+
     def is_setup_chat_busy(self, novel_id: str | None = None) -> bool:
         nid = novel_id or active_novel_id()
         t = self._setup_chat_tasks.get(nid)
