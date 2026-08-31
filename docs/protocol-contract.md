@@ -105,17 +105,21 @@
 ### 2.6 场景生图（侧车，不进 journal）
 
 ```json
-{"type": "author_scene_image_started", "chapter": 6, "index": 2}
+{"type": "author_scene_image_started", "novel_id": "default", "chapter": 6, "index": 2}
 ```
 
 ```json
-{"type": "author_scene_image_done", "chapter": 6, "index": 2, "filename": "6_2-1730000000.png"}
+{"type": "author_scene_image_done", "novel_id": "default", "chapter": 6, "index": 2, "filename": "6_2-1730000000.png"}
+```
+
+```json
+{"type": "author_scene_image_done", "novel_id": "default", "chapter": 6, "index": 2, "error": "该 stage 无在场角色，无法生图"}
 ```
 
 | `type` | 方向 | 说明 |
 |--------|------|------|
 | `author_scene_image_started` | 出 | 某 stage 场景生图开始（侧车，不进 journal） |
-| `author_scene_image_done` | 出 | `{chapter, index, filename?}` 或 `{chapter, index, error}` |
+| `author_scene_image_done` | 出 | `{novel_id, chapter, index, filename?}` 或 `{novel_id, chapter, index, error}` |
 
 ### 2.7 其它出站（journal / 兼容）
 
