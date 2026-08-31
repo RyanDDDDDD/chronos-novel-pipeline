@@ -1,4 +1,5 @@
 import { createListenerMiddleware, isAnyOf } from '@reduxjs/toolkit'
+import { toast } from 'sonner'
 import type { RootState, AppDispatch } from '@/shared/store/store'
 import { wsEventReceived } from '@/shared/store/wsActions'
 import { wsConnected } from '@/shared/store/connectionSlice'
@@ -12,6 +13,7 @@ import { setChapter } from '@/shared/store/uiSlice'
 import { loadNovelStatusSnapshot } from '@/shared/queries/novelStatusSnapshot'
 import { queryClient } from '@/shared/lib/queryClient'
 import { novitaModelCatalogKey } from '@/shared/queries/keys'
+import { cloudAuthErrorMessage } from '@/features/services/cloudAuthErrors'
 
 // No event received within this long while running -> soft "suspected stuck" alarm (status
 // itself doesn't change). Must exceed a single LLM call's backend timeout (120s) but there's a
@@ -176,5 +178,18 @@ startListening({
   effect: (action) => {
     if (action.payload.type !== 'novita_model_catalog_refreshed') return
     void queryClient.invalidateQueries({ queryKey: novitaModelCatalogKey })
+  },
+})
+
+// Google login completes asynchronously after the browser round-trip, when the dialog is
+// already closed; toast the outcome so a failure or success is never silent.
+startListening({
+  actionCreator: wsEventReceived,
+  effect: (action) => {
+    if (action.payload.type === 'cloud_auth_login_failed') {
+      toast.error(cloudAuthErrorMessage(action.payload.error_code), { duration: 7000 })
+    } else if (action.payload.type === 'cloud_auth_login_succeeded') {
+      toast.success('已登录 Chronos 账号', { duration: 5000 })
+    }
   },
 })

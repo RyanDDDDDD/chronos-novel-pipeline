@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { configureStore } from '@reduxjs/toolkit'
+import { toast } from 'sonner'
 import authorLoopReducer, {
   authorLoopRunBegin, authorLoopLiveRunSet, selectAuthorLoop, selectAuthorLoopLastAutoSave,
 } from '@/features/author/store/authorLoopSlice'
@@ -10,6 +11,13 @@ import { wsEventReceived } from '@/shared/store/wsActions'
 import { listenerMiddleware } from '@/shared/store/listeners'
 import { buildTestStore } from '@/test/renderWithClient'
 import { EMPTY_CHAT_STATE } from '@/features/chat/utils/setupChatState'
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}))
 
 function buildStore() {
   return configureStore({
@@ -198,5 +206,20 @@ describe('listeners: novita_model_catalog_refreshed invalidates the catalog quer
     })
 
     invalidateSpy.mockRestore()
+  })
+})
+
+describe('listeners: cloud auth OAuth outcome toasts', () => {
+  beforeEach(() => {
+    vi.mocked(toast.error).mockClear()
+    vi.mocked(toast.success).mockClear()
+  })
+
+  it('shows the mapped error toast when Google login fails', () => {
+    const store = buildTestStore()
+
+    store.dispatch(wsEventReceived({ type: 'cloud_auth_login_failed', error_code: 'OAUTH_TIMEOUT' }))
+
+    expect(toast.error).toHaveBeenCalledWith('登录超时，请重试', { duration: 7000 })
   })
 })

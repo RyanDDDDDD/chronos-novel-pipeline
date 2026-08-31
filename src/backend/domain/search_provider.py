@@ -163,21 +163,32 @@ class ChronosCloudSearchProvider(SearchProvider):
 
     async def search(self, topic: str) -> SearchResult:
         from api.services import cloud_auth
+        from utils.config import get_config
         from utils.hedge import hedged_call
 
         if not cloud_auth.is_logged_in():
             raise ValueError("请先登录 Chronos 账号后再使用云端检索。")
 
-        async def _attempt() -> SearchResult:
-            token = cloud_auth.get_access_token()
+        async def _request(token: str | None) -> httpx.Response:
             async with httpx.AsyncClient(transport=self._transport, timeout=20) as client:
-                resp = await client.post(
+                return await client.post(
                     f"{self._base_url}/v1/search/query",
                     headers={"Authorization": f"Bearer {token}"},
                     json={"query": topic, "top_k": self._top_k},
                 )
-                resp.raise_for_status()
-                data = resp.json()
+
+        async def _attempt() -> SearchResult:
+            resp = await _request(cloud_auth.get_access_token())
+            if resp.status_code == 401:
+                # The access token may expire during a long writing session; refresh once
+                # and retry once. The refresh lock prevents hedged attempts from stampeding.
+                try:
+                    await cloud_auth.refresh(get_config())
+                except cloud_auth.CloudAuthError as e:
+                    raise ValueError("云端登录已过期或刷新失败，请重新登录 Chronos 账号。") from e
+                resp = await _request(cloud_auth.get_access_token())
+            resp.raise_for_status()
+            data = resp.json()
 
             hits = [
                 SearchHit(

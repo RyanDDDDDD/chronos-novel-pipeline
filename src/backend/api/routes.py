@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Annotated
 
 from fastapi import FastAPI, File, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
@@ -1775,8 +1776,11 @@ Receive a user message and run a setting dialog; the output is broadcast via ws.
                 await cloud_auth.start_google_login(get_config())
             except cloud_auth.CloudAuthError as e:
                 await _hub_instance().broadcast({"type": "cloud_auth_login_failed", "error_code": e.error_code})
-                return
-            await _hub_instance().broadcast({"type": "cloud_auth_login_succeeded"})
+            except Exception:  # noqa: BLE001 - background failures must surface to the user
+                logging.getLogger(__name__).exception("google login background task crashed")
+                await _hub_instance().broadcast({"type": "cloud_auth_login_failed", "error_code": "OAUTH_FAILED"})
+            else:
+                await _hub_instance().broadcast({"type": "cloud_auth_login_succeeded"})
 
         asyncio.create_task(_run_and_broadcast())
         return {"status": "waiting_for_browser"}
