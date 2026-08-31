@@ -986,6 +986,36 @@ Receive a user message and run a setting dialog; the output is broadcast via ws.
             return Response(status_code=404)
         return FileResponse(sandbox_scene_path(fn), media_type="image/png")
 
+    @app.post("/api/author-loop/scene-image")
+    async def author_loop_scene_image_endpoint(body: dict):
+        from media.scene.author import schedule_author_stage_scene_image
+
+        b = body or {}
+        schedule_author_stage_scene_image(int(b.get("chapter", 0)), int(b.get("index", 0)))
+        return {"ok": True}
+
+    @app.get("/api/author-loop/scene-images")
+    async def author_loop_scene_images_endpoint(chapter: int) -> dict:
+        from media.scene.author_store import list_author_stage_scene_images
+
+        images = {
+            idx: f"/api/author-loop/scene-image/{chapter}/{idx}/file?v={fn}"
+            for idx, fn in list_author_stage_scene_images(chapter).items()
+        }
+        return {"images": images}
+
+    @app.get("/api/author-loop/scene-image/{chapter}/{index}/file")
+    async def author_loop_scene_image_file_endpoint(chapter: int, index: int):
+        from fastapi import Response
+        from fastapi.responses import FileResponse
+        from media.scene.author_store import author_stage_scene_image_filename
+        from utils.paths import author_scene_path
+
+        fn = author_stage_scene_image_filename(chapter, index)
+        if not fn:
+            return Response(status_code=404)
+        return FileResponse(author_scene_path(fn), media_type="image/png")
+
     @app.get("/api/story-sandbox/branches")
     async def story_sandbox_branches_endpoint(chapter: int, novel_id: str | None = None) -> dict:
         """Lists this chapter's (or free mode's, chapter=0) story lines. Lazily registers a
