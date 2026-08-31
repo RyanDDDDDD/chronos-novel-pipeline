@@ -28,7 +28,12 @@ DEFAULT_AUTO_BUILD_CHAPTER_COUNT = 3
 DEFAULT_RECALL_COOLDOWN_TURNS = 10
 DEFAULT_RECALL_TOP_K = 5
 _DEAD_TOP_LEVEL_KEYS = frozenset({"self_review", "profile_kind", "expansion"})
-_LLM_PARAM_NODE_IDS = frozenset({"director", "review", "state_derive"})
+_LLM_PARAM_NODE_IDS = frozenset({
+    "director", "review", "state_derive",
+    # scene_image carries only model_ref (image-gen entry binding for author-page per-stage
+    # scene generation, not an LLM sampling call) -- same shape as sandbox_llm_params.scene_image.
+    "scene_image",
+})
 _SANDBOX_LLM_PARAM_NODE_IDS = frozenset({
     "prose", "derive_char", "derive_scene", "summary_fold", "event_extract", "profile_mutate",
     "suggest", "dialogue_draft", "identify_cast", "selection_rewrite",
