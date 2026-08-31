@@ -190,6 +190,8 @@ startListening({
       toast.error(cloudAuthErrorMessage(action.payload.error_code), { duration: 7000 })
     } else if (action.payload.type === 'cloud_auth_login_succeeded') {
       toast.success('已登录 Chronos 账号', { duration: 5000 })
+    } else if (action.payload.type === 'cloud_auth_logged_out') {
+      toast.success('已登出 Chronos 账号', { duration: 5000 })
     }
   },
 })

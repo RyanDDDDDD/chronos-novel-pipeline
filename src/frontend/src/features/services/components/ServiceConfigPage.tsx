@@ -5,8 +5,6 @@ import { fetchModelCatalog, fetchLocalModels, fetchCompatibleModels, type CloudM
 import PageHeader from '@/shared/components/PageHeader'
 import ModelRadioList from '@/shared/components/ModelRadioList'
 import ImageServiceModelFields from '@/features/services/components/ImageServiceModelFields'
-import CloudLoginDialog from '@/features/services/components/CloudLoginDialog'
-import { loginStatusHydrated } from '@/features/services/store/cloudAuthSlice'
 import { Switch } from '@/shared/components/ui/switch'
 import { Input } from '@/shared/components/ui/input'
 import { Textarea } from '@/shared/components/ui/textarea'
@@ -249,7 +247,6 @@ export default function ServiceConfigPage() {
   const [savedCfgText, setSavedCfgText] = useState('')
   const [showTavilyKey, setShowTavilyKey] = useState(false)
   const [showQianfanKey, setShowQianfanKey] = useState(false)
-  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [revealedModelKeys, setRevealedModelKeys] = useState<Set<string>>(new Set())
   const toggleRevealed = (id: string) =>
     setRevealedModelKeys(prev => {
@@ -273,13 +270,6 @@ export default function ServiceConfigPage() {
   useEffect(() => {
     void fetchModelCatalog().then(setCatalog)
   }, [])
-
-  useEffect(() => {
-    void fetch('/api/auth/status')
-      .then(res => res.json())
-      .then((body: { logged_in: boolean }) => dispatch(loginStatusHydrated(body.logged_in)))
-      .catch(() => {})
-  }, [dispatch])
 
   const refreshLocalModels = () => {
     setLocalModelsLoading(true)
@@ -429,15 +419,10 @@ export default function ServiceConfigPage() {
           </Field>
 
           {api.search_provider === 'chronos_cloud' ? (
-            <Field label="登录状态" hint="Chronos 云端检索需要登录账号，用量按登录用户计费/限流。">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[var(--c-text-secondary)]">
-                  {isLoggedIn ? '已登录' : '未登录'}
-                </span>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setLoginDialogOpen(true)}>
-                  {isLoggedIn ? '重新登录' : '登录'}
-                </Button>
-              </div>
+            <Field label="登录状态" hint="Chronos 云端检索需要登录账号，用量按登录用户计费/限流。登录 / 切换账号在左侧小说栏底部的账号入口。">
+              <span className="text-xs text-[var(--c-text-secondary)]">
+                {isLoggedIn ? '已登录' : '未登录'}
+              </span>
             </Field>
           ) : (api.search_provider ?? 'tavily') === 'tavily' ? (
             <Field
@@ -490,7 +475,6 @@ export default function ServiceConfigPage() {
               </div>
             </Field>
           )}
-          <CloudLoginDialog open={loginDialogOpen} onClose={() => setLoginDialogOpen(false)} />
 
           <Field label="检索条数上限" hint="单次联网检索返回条数上限（两路检索共用）。对应 api.search_top_k。">
             <Input
