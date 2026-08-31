@@ -181,6 +181,18 @@ startListening({
   },
 })
 
+// A finished author scene-image generation (success only) means a new image landed on disk --
+// refetch the per-chapter scene-image map so the manuscript view picks it up. Failures are left
+// alone: authorSceneImageSlice already surfaces those via byKey/lastFailure.
+startListening({
+  actionCreator: wsEventReceived,
+  effect: (action) => {
+    if (action.payload.type !== 'author_scene_image_done') return
+    if (action.payload.error) return
+    void queryClient.invalidateQueries({ queryKey: ['author', 'scene-images'] })
+  },
+})
+
 // Google login completes asynchronously after the browser round-trip, when the dialog is
 // already closed; toast the outcome so a failure or success is never silent.
 startListening({

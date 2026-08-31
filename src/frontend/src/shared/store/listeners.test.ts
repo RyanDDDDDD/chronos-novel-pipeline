@@ -209,6 +209,43 @@ describe('listeners: novita_model_catalog_refreshed invalidates the catalog quer
   })
 })
 
+describe('listeners: author_scene_image_done invalidates author scene-images query', () => {
+  it('invalidates on success', async () => {
+    const invalidateSpy = vi.spyOn(
+      (await import('@/shared/lib/queryClient')).queryClient,
+      'invalidateQueries',
+    )
+
+    const store = buildTestStore()
+    store.dispatch(wsEventReceived({
+      type: 'author_scene_image_done', novel_id: 'n', chapter: 6, index: 2, filename: 'x.png',
+    }))
+
+    await vi.waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['author', 'scene-images'] })
+    })
+
+    invalidateSpy.mockRestore()
+  })
+
+  it('does not invalidate on error', async () => {
+    const invalidateSpy = vi.spyOn(
+      (await import('@/shared/lib/queryClient')).queryClient,
+      'invalidateQueries',
+    )
+
+    const store = buildTestStore()
+    store.dispatch(wsEventReceived({
+      type: 'author_scene_image_done', novel_id: 'n', chapter: 6, index: 2, error: 'boom',
+    }))
+    await Promise.resolve()
+
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['author', 'scene-images'] })
+
+    invalidateSpy.mockRestore()
+  })
+})
+
 describe('listeners: cloud auth OAuth outcome toasts', () => {
   beforeEach(() => {
     vi.mocked(toast.error).mockClear()
