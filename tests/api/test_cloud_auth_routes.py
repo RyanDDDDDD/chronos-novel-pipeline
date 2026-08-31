@@ -84,3 +84,32 @@ def test_oauth_start_endpoint_returns_immediately_and_runs_in_background(monkeyp
 
     assert r.status_code == 200
     assert r.json() == {"status": "waiting_for_browser"}
+
+
+def test_oauth_start_broadcasts_unknown_background_failure(monkeypatch):
+    import asyncio
+
+    scheduled = []
+    broadcasts = []
+
+    async def _fake_start_google_login(cfg):
+        raise RuntimeError("unexpected failure")
+
+    async def _fake_broadcast(self, event):
+        broadcasts.append(event)
+
+    def _capture_task(coro):
+        scheduled.append(coro)
+        return None
+
+    monkeypatch.setattr("utils.config.get_config", lambda: {})
+    monkeypatch.setattr("api.services.cloud_auth.start_google_login", _fake_start_google_login)
+    monkeypatch.setattr("api.routes.asyncio.create_task", _capture_task)
+    monkeypatch.setattr("api.services.message_hub.MessageHub.broadcast", _fake_broadcast)
+    client = TestClient(app_under_test())
+
+    r = client.post("/api/auth/oauth/start", json={"provider": "google"})
+    asyncio.run(scheduled[0])
+
+    assert r.status_code == 200
+    assert broadcasts == [{"type": "cloud_auth_login_failed", "error_code": "OAUTH_FAILED"}]

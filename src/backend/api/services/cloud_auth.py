@@ -24,6 +24,9 @@ _CALLBACK_PORT = 53214
 _CALLBACK_PATH = "/callback"
 _CALLBACK_TIMEOUT_S = 300.0
 
+# Deduplicate concurrent refreshes from hedged searches and web_search calls to avoid Cognito throttling.
+_refresh_lock = asyncio.Lock()
+
 
 class CloudAuthError(Exception):
     """Carries the cloud AuthService's error_code/message (or a local NOT_CONFIGURED/
@@ -101,15 +104,23 @@ async def login(cfg: dict, email: str, password: str) -> None:
 
 
 async def refresh(cfg: dict) -> None:
-    refresh_token = get_refresh_token()
-    if refresh_token is None:
-        raise CloudAuthError("REFRESH_TOKEN_INVALID", "本地没有 refresh token，需要重新登录。")
-    try:
-        body = await _post(cfg, "/v1/auth/refresh", {"refresh_token": refresh_token})
-    except CloudAuthError:
-        clear_tokens()
-        raise
-    _store_tokens(body["access_token"], None, body["id_token"])
+    token_before = get_access_token()
+    async with _refresh_lock:
+        # Another coroutine may have refreshed while we waited for the lock.
+        if get_access_token() != token_before:
+            return
+        refresh_token = get_refresh_token()
+        if refresh_token is None:
+            raise CloudAuthError("REFRESH_TOKEN_INVALID", "本地没有 refresh token，需要重新登录。")
+        try:
+            body = await _post(cfg, "/v1/auth/refresh", {"refresh_token": refresh_token})
+        except CloudAuthError as e:
+            # Keep valid local tokens during transient outages; only a definitively dead
+            # refresh token should log the user out.
+            if e.error_code == "REFRESH_TOKEN_INVALID":
+                clear_tokens()
+            raise
+        _store_tokens(body["access_token"], None, body["id_token"])
 
 
 async def logout(cfg: dict) -> None:
@@ -172,13 +183,28 @@ async def start_google_login(cfg: dict) -> None:
     it just relays AuthService's back to it at the callback step. The state comparison below
     IS the CSRF check (CONTRACT.md: AuthService is stateless and never validates state itself)."""
     start_body = await _post(cfg, "/v1/auth/oauth/start", {"provider": "google"})
-    authorize_url = start_body["authorize_url"]
-    server_verifier = start_body["code_verifier"]
-    server_state = start_body["state"]
+    try:
+        authorize_url = start_body["authorize_url"]
+        server_verifier = start_body["code_verifier"]
+        server_state = start_body["state"]
+    except (KeyError, TypeError) as e:
+        raise CloudAuthError("OAUTH_START_MALFORMED", "云端返回的登录参数不完整，请重试。") from e
 
-    webbrowser.open(authorize_url)
-    server = _CallbackServer()
-    params = await server.wait_for_callback(timeout=_CALLBACK_TIMEOUT_S)
+    try:
+        webbrowser.open(authorize_url)
+    except Exception as e:  # noqa: BLE001 - webbrowser's exception type is platform-dependent
+        raise CloudAuthError("OAUTH_BROWSER_FAILED", "无法打开系统浏览器，请检查默认浏览器设置。") from e
+    try:
+        server = _CallbackServer()
+    except OSError as e:
+        raise CloudAuthError(
+            "OAUTH_CALLBACK_PORT_BUSY",
+            f"本地回调端口 {_CALLBACK_PORT} 被占用，请关闭占用该端口的程序后重试。",
+        ) from e
+    try:
+        params = await server.wait_for_callback(timeout=_CALLBACK_TIMEOUT_S)
+    except TimeoutError as e:
+        raise CloudAuthError("OAUTH_TIMEOUT", "等待浏览器登录回调超时，请重试。") from e
 
     if params.get("state") != server_state:
         raise CloudAuthError("OAUTH_STATE_MISMATCH", "登录回调的 state 不匹配，可能是过期或被篡改的请求，请重新登录。")

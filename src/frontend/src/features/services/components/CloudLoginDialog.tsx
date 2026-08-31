@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button } from '@/shared/components/ui/button'
 import { Input } from '@/shared/components/ui/input'
+import { cloudAuthErrorMessage as errorMessage } from '@/features/services/cloudAuthErrors'
 
 interface CloudLoginDialogProps {
   open: boolean
@@ -8,24 +9,6 @@ interface CloudLoginDialogProps {
 }
 
 type DialogMode = 'login' | 'register' | 'confirm'
-
-// error_code -> Chinese message. chronos owns this mapping (see CONTRACT.md's language
-// split) -- the cloud service's `message` field is English/diagnostic-only, never shown here.
-const ERROR_MESSAGES: Record<string, string> = {
-  INVALID_CREDENTIALS: '邮箱或密码不正确',
-  USER_NOT_CONFIRMED: '账号尚未验证，请先完成邮箱验证码验证',
-  EMAIL_ALREADY_EXISTS: '该邮箱已注册，请直接登录',
-  INVALID_PASSWORD: '密码不符合要求（至少 8 位，包含大小写字母和数字）',
-  CODE_MISMATCH: '验证码不正确',
-  CODE_EXPIRED: '验证码已过期，请重新注册获取新验证码',
-  NOT_CONFIGURED: '云端登录服务尚未配置',
-  NETWORK_ERROR: '无法连接云端服务，请检查网络',
-}
-
-function errorMessage(code: string | undefined): string {
-  if (!code) return '操作失败，请重试'
-  return ERROR_MESSAGES[code] ?? `操作失败（${code}）`
-}
 
 export default function CloudLoginDialog({ open, onClose }: CloudLoginDialogProps) {
   const [mode, setMode] = useState<DialogMode>('login')

@@ -310,6 +310,64 @@ async def test_chronos_cloud_search_provider_maps_response_to_search_result(monk
     assert result.hits[0].images == [("http://img", None)]
 
 
+@pytest.mark.asyncio
+async def test_chronos_cloud_search_retries_after_401_refresh(monkeypatch):
+    from domain.search_provider import ChronosCloudSearchProvider
+
+    tokens = ["stale", "fresh"]
+    refreshed = {"called": False}
+    monkeypatch.setattr("api.services.cloud_auth.is_logged_in", lambda: True)
+    monkeypatch.setattr("api.services.cloud_auth.get_access_token", lambda: tokens[0])
+
+    async def fake_refresh(cfg):
+        refreshed["called"] = True
+        tokens.pop(0)
+
+    monkeypatch.setattr("api.services.cloud_auth.refresh", fake_refresh)
+    monkeypatch.setattr("utils.config.get_config", lambda: {})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.headers["Authorization"] == "Bearer stale":
+            return httpx.Response(401, json={"error_code": "TOKEN_EXPIRED"})
+        assert request.headers["Authorization"] == "Bearer fresh"
+        return httpx.Response(200, json={"answer": "refreshed answer", "hits": [], "top_images": []})
+
+    provider = ChronosCloudSearchProvider(
+        base_url="https://search.example.com",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await provider.search("some topic")
+
+    assert result.answer == "refreshed answer"
+    assert refreshed["called"] is True
+
+
+@pytest.mark.asyncio
+async def test_chronos_cloud_search_surfaces_relogin_when_refresh_fails(monkeypatch):
+    from api.services.cloud_auth import CloudAuthError
+    from domain.search_provider import ChronosCloudSearchProvider
+
+    monkeypatch.setattr("api.services.cloud_auth.is_logged_in", lambda: True)
+
+    async def fake_refresh(cfg):
+        raise CloudAuthError("REFRESH_TOKEN_INVALID", "expired")
+
+    monkeypatch.setattr("api.services.cloud_auth.refresh", fake_refresh)
+    monkeypatch.setattr("utils.config.get_config", lambda: {})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error_code": "TOKEN_EXPIRED"})
+
+    provider = ChronosCloudSearchProvider(
+        base_url="https://search.example.com",
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(ValueError, match="重新登录"):
+        await provider.search("some topic")
+
+
 def test_build_search_provider_raises_for_chronos_cloud_when_base_url_missing():
     from domain.search_provider import build_search_provider
 
