@@ -16,6 +16,18 @@ vi.mock('@/shared/utils/archives', () => ({
   fetchChapterArchives: vi.fn().mockResolvedValue({ chapter: 2, characters: [] }),
 }))
 
+const useAuthorSceneImagesMock = vi.hoisted(() => vi.fn(() => ({ data: {} as Record<string, string> })))
+const requestAuthorSceneImageMock = vi.hoisted(() => vi.fn(async () => ({ ok: true })))
+vi.mock('@/features/author/queries/sceneImage', () => ({
+  useAuthorSceneImages: (...args: unknown[]) => useAuthorSceneImagesMock(...args),
+  requestAuthorSceneImage: (...args: unknown[]) => requestAuthorSceneImageMock(...args),
+}))
+
+const toastErrorMock = vi.hoisted(() => vi.fn())
+vi.mock('@/shared/hooks/useToast', () => ({
+  useToast: () => ({ error: toastErrorMock, success: vi.fn(), confirm: vi.fn(), prompt: vi.fn(), toasts: [], dismiss: vi.fn() }),
+}))
+
 beforeEach(() => {
   cleanup()
   vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
@@ -23,6 +35,9 @@ beforeEach(() => {
     json: async () =>
       url.includes('/api/chapters') ? { chapters: [{ chapter: 1 }, { chapter: 2 }, { chapter: 3 }] } : {},
   })) as unknown as typeof fetch)
+  useAuthorSceneImagesMock.mockReset().mockReturnValue({ data: {} })
+  requestAuthorSceneImageMock.mockReset().mockResolvedValue({ ok: true })
+  toastErrorMock.mockReset()
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -446,5 +461,65 @@ describe('AuthorLoopPage', () => {
       await waitFor(() => expect(screen.getByText(/展开全文/)).toBeTruthy())
       expect(scrollTo).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('AuthorLoopPage 场景生图', () => {
+  it('renders a scene-image row on synthesis segments', () => {
+    renderPage({
+      status: 'done', chapter: 2, total: 1,
+      messages: [{ id: 'seg-0', role: 'agent', type: 'segment', segment: { index: 0, intent: '', skill: null, text: '正文内容。', agent: 'synthesis' } }],
+    })
+    expect(screen.getByRole('button', { name: /生图/ })).toBeTruthy()
+  })
+
+  it('does not render a scene-image row on non-synthesis / empty-text segments', () => {
+    renderPage({
+      status: 'done', chapter: 2, total: 2,
+      messages: [
+        { id: 'seg-0', role: 'agent', type: 'segment', segment: { index: 0, intent: '', skill: null, text: '旁白内容。', agent: 'director' } },
+        { id: 'seg-1', role: 'agent', type: 'segment', segment: { index: 1, intent: '', skill: null, text: '', agent: 'synthesis' } },
+      ],
+    })
+    expect(screen.queryByRole('button', { name: /生图/ })).toBeNull()
+  })
+
+  it('shows the existing image when the map has this stage index', () => {
+    useAuthorSceneImagesMock.mockReturnValue({ data: { '0': '/api/author-loop/scene-image/6/0/file?v=x' } })
+    renderPage({
+      status: 'done', chapter: 2, total: 1,
+      messages: [{ id: 'seg-0', role: 'agent', type: 'segment', segment: { index: 0, intent: '', skill: null, text: '正文内容。', agent: 'synthesis' } }],
+    })
+    expect(screen.getByRole('img').getAttribute('src')).toBe('/api/author-loop/scene-image/6/0/file?v=x')
+  })
+
+  it('生图 button triggers requestAuthorSceneImage with the current chapter + segment index', async () => {
+    renderPage({
+      status: 'done', chapter: 2, total: 1,
+      messages: [{ id: 'seg-0', role: 'agent', type: 'segment', segment: { index: 0, intent: '', skill: null, text: '正文内容。', agent: 'synthesis' } }],
+    })
+    fireEvent.click(screen.getByRole('button', { name: /生图/ }))
+    await waitFor(() => expect(requestAuthorSceneImageMock).toHaveBeenCalledWith(2, 0))
+  })
+
+  it('shows a toast when the generate request itself fails', async () => {
+    requestAuthorSceneImageMock.mockResolvedValueOnce({ ok: false })
+    renderPage({
+      status: 'done', chapter: 2, total: 1,
+      messages: [{ id: 'seg-0', role: 'agent', type: 'segment', segment: { index: 0, intent: '', skill: null, text: '正文内容。', agent: 'synthesis' } }],
+    })
+    fireEvent.click(screen.getByRole('button', { name: /生图/ }))
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('场景生图请求失败，请重试'))
+  })
+
+  it('toasts and consumes a scene-image failure broadcast from the store', async () => {
+    const { store } = renderLoopHarness({
+      status: 'done', chapter: 2, total: 1,
+      messages: [segMsg(0, '正文内容。')],
+    })
+    store.dispatch(wsEventReceived({ type: 'author_scene_image_started', novel_id: 'default', chapter: 2, index: 0 }))
+    store.dispatch(wsEventReceived({ type: 'author_scene_image_done', novel_id: 'default', chapter: 2, index: 0, error: '未配置模型' }))
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('场景生图失败：未配置模型'))
+    expect(store.getState().authorSceneImage.lastFailure).toBeNull()
   })
 })
