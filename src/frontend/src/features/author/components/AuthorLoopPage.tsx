@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { PenLine, Loader2, CheckCircle2, AlertTriangle, Play, Square, RotateCcw, FileText } from 'lucide-react'
 
 import AuthorCharacterPanel from '@/features/author/components/AuthorCharacterPanel'
+import AuthorSceneImageRow from '@/features/author/components/AuthorSceneImageRow'
 import { CharacterStateBubble } from '@/shared/components/CharacterStateBubble'
 import { EventLogBubble } from '@/shared/components/EventLogBubble'
 import { RecallContextBubble } from '@/shared/components/RecallContextBubble'
@@ -21,7 +22,10 @@ import {
 } from '@/features/author/utils/authorTimeline'
 import { useActiveNovelId } from '@/shared/queries/novels'
 import { useChapterNumbers } from '@/shared/queries/chapters'
+import { useAuthorSceneImages, requestAuthorSceneImage } from '@/features/author/queries/sceneImage'
+import { useToast } from '@/shared/hooks/useToast'
 import { selectAuthorLoop, startAuthorLoop, resumeAuthorLoop, restartAuthorLoop, stopAuthorLoop } from '@/features/author/store/authorLoopSlice'
+import { selectAuthorSceneImageLastFailure, authorSceneImageFailureConsumed } from '@/shared/store/authorSceneImageSlice'
 import { selectChapter, setChapter as setChapterAction } from '@/shared/store/uiSlice'
 import { selectBusy, selectResumable } from '@/shared/store/selectors'
 import { VIEW_LABELS } from '@/shared/utils/novelRoute'
@@ -177,7 +181,12 @@ function CharacterPerformanceFields({
   )
 }
 
-function SegmentBubble({ seg }: { seg: { index: number; beat?: number; beats?: number; intent: string; psychology?: string; skill: string | null; text: string; draft?: boolean; agent?: string; role?: string } }) {
+function SegmentBubble({ seg, chapter, sceneImageUrl, onGenerateSceneImage }: {
+  seg: { index: number; beat?: number; beats?: number; intent: string; psychology?: string; skill: string | null; text: string; draft?: boolean; agent?: string; role?: string }
+  chapter?: number
+  sceneImageUrl?: string
+  onGenerateSceneImage?: () => void
+}) {
   const isCharacter = seg.agent === 'character'
   const isSynthesis = seg.agent === 'synthesis'
   const charPerf = isCharacter ? resolveCharacterSegment(seg) : null
@@ -236,6 +245,16 @@ function SegmentBubble({ seg }: { seg: { index: number; beat?: number; beats?: n
           )}
         </>
       )}
+      {/* bodyText, not seg.text -- a stage whose prose strips down to whitespace has nothing
+          to draw, and the bubble already renders it as （空）. */}
+      {isSynthesis && bodyText.trim() && onGenerateSceneImage && (
+        <AuthorSceneImageRow
+          chapter={chapter ?? 0}
+          index={seg.index}
+          imageUrl={sceneImageUrl}
+          onGenerate={onGenerateSceneImage}
+        />
+      )}
     </AgentBubble>
   )
 }
@@ -251,6 +270,22 @@ export default function AuthorLoopPage() {
   const chapter = useSelector(selectChapter)
   const chapters = useChapterNumbers(useActiveNovelId(), chapter)
   const authorLoop = useSelector(selectAuthorLoop)
+  const { error: toastError } = useToast()
+  const { data: sceneImages } = useAuthorSceneImages(novelId, chapter)
+  const sceneFailure = useSelector(selectAuthorSceneImageLastFailure)
+  useEffect(() => {
+    if (!sceneFailure) return
+    // Always consume, so a failure from a chapter we're not showing can't surface as a stale
+    // toast later; only the viewed chapter's failure is worth interrupting the user for (the
+    // row itself keeps the inline red hint either way).
+    if (sceneFailure.chapter === chapter) toastError(`场景生图失败：${sceneFailure.error}`)
+    dispatch(authorSceneImageFailureConsumed())
+  }, [sceneFailure, chapter, dispatch, toastError])
+  const handleGenerateScene = (index: number) => {
+    void requestAuthorSceneImage(chapter, index).then((res) => {
+      if (!res.ok) toastError('场景生图请求失败，请重试')
+    })
+  }
   const resumable = useSelector((s: RootState) => selectResumable(chapter)(s))
   const disabled = useSelector(selectBusy)
   const onRun = (ch: number) => { void dispatch(startAuthorLoop(ch)) }
@@ -468,7 +503,15 @@ export default function AuthorLoopPage() {
             const m = item.message
             const cat = messageCategory(m)
             if (cat && hiddenCats.has(cat)) return null
-            if (m.type === 'segment') return <SegmentBubble key={m.id} seg={m.segment} />
+            if (m.type === 'segment') return (
+              <SegmentBubble
+                key={m.id}
+                seg={m.segment}
+                chapter={chapter}
+                sceneImageUrl={sceneImages?.[String(m.segment.index)]}
+                onGenerateSceneImage={() => handleGenerateScene(m.segment.index)}
+              />
+            )
             if (m.type === 'summary') return <SummaryBubble key={m.id} text={m.text} />
             if (m.type === 'state') {
               return <AuthorContextBubble key={m.id} group={{ segIndex: -999, anchorIdx: item.messageIdx, state: m }} />

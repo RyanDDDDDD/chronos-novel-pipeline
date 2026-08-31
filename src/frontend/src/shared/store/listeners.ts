@@ -12,7 +12,7 @@ import { syncAuthorLoopForChapter } from '@/features/author/store/authorLoopSlic
 import { setChapter } from '@/shared/store/uiSlice'
 import { loadNovelStatusSnapshot } from '@/shared/queries/novelStatusSnapshot'
 import { queryClient } from '@/shared/lib/queryClient'
-import { novitaModelCatalogKey } from '@/shared/queries/keys'
+import { novitaModelCatalogKey, authorSceneImagesPrefixKey } from '@/shared/queries/keys'
 import { cloudAuthErrorMessage } from '@/features/services/cloudAuthErrors'
 
 // No event received within this long while running -> soft "suspected stuck" alarm (status
@@ -178,6 +178,18 @@ startListening({
   effect: (action) => {
     if (action.payload.type !== 'novita_model_catalog_refreshed') return
     void queryClient.invalidateQueries({ queryKey: novitaModelCatalogKey })
+  },
+})
+
+// A finished author scene-image generation (success only) means a new image landed on disk --
+// refetch the per-chapter scene-image map so the manuscript view picks it up. Failures are left
+// alone: authorSceneImageSlice already surfaces those via byKey/lastFailure.
+startListening({
+  actionCreator: wsEventReceived,
+  effect: (action) => {
+    if (action.payload.type !== 'author_scene_image_done') return
+    if (action.payload.error) return
+    void queryClient.invalidateQueries({ queryKey: authorSceneImagesPrefixKey })
   },
 })
 

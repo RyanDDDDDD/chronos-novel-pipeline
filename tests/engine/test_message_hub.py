@@ -2810,6 +2810,52 @@ async def test_author_guard_stops_and_resets_running_chapter(monkeypatch, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_author_guard_clears_author_scene_images(monkeypatch, tmp_path):
+    """Same restart/reset path as test_author_guard_stops_and_resets_running_chapter --
+    it must also drop stale author-stage scene images for the reset chapter (spec: a
+    re-run shouldn't show scene art from the previous, now-discarded run)."""
+    import asyncio as _aio
+
+    import api.services.message_hub as mh_mod
+    from api.services.message_hub import MessageHub
+
+    journal = tmp_path / "ch3_journal.ndjson"
+    journal.write_text('{"type":"x"}\n', encoding="utf-8")
+    cp = tmp_path / "graph.sqlite"
+    cp.write_text("x", encoding="utf-8")
+
+    monkeypatch.setattr(mh_mod, "author_loop_journal_path", lambda ch: str(journal))
+    monkeypatch.setattr(mh_mod, "author_loop_graph_checkpoint_path", lambda: str(cp))
+
+    async def fake_adelete(self, thread_id):  # noqa: ANN001
+        pass
+
+    import langgraph.checkpoint.sqlite.aio as cp_mod
+    monkeypatch.setattr(cp_mod.AsyncSqliteSaver, "adelete_thread", fake_adelete)
+
+    cleared: dict = {}
+    monkeypatch.setattr(
+        "media.scene.author_store.clear_author_stage_scene_images",
+        lambda chapter: cleared.setdefault("chapter", chapter),
+    )
+
+    hub = MessageHub()
+    hub._author_chapters["default"] = 3
+
+    async def never_ends(*_a, **_k):
+        await _aio.sleep(3600)
+
+    import engine.author_loop.dialogue_mode.chapter as dlg_mod
+    monkeypatch.setattr(dlg_mod, "run_dialogue_chapter", never_ends)
+    await hub.start_author_loop(3)
+    assert hub._author_chapters.get("default") == 3
+
+    await hub._on_setup_write_affects_author(1, 10**9, "第 3 章设定变更")
+
+    assert cleared.get("chapter") == 3
+
+
+@pytest.mark.asyncio
 async def test_author_guard_ignores_unaffected_chapter(monkeypatch):
     import asyncio as _aio
 

@@ -280,8 +280,9 @@ export default function PipelineWorkflowConfigView({ novelId }: { novelId: strin
   ]
   const IMAGE_GEN_PARAM_NODE_IDS = ['character_portrait']
   const SANDBOX_IMAGE_GEN_PARAM_NODE_IDS = ['scene_image']
+  const RUNTIME_IMAGE_GEN_PARAM_NODE_IDS = ['scene_image']
   const SELECTABLE_NODE_IDS_BY_TAB: Record<WorkflowTab, Set<string>> = {
-    runtime: new Set(RUNTIME_LLM_PARAM_NODE_IDS),
+    runtime: new Set([...RUNTIME_LLM_PARAM_NODE_IDS, ...RUNTIME_IMAGE_GEN_PARAM_NODE_IDS]),
     skeleton: new Set([...IMPORT_LLM_PARAM_NODE_IDS, ...IMAGE_GEN_PARAM_NODE_IDS]),
     sandbox: new Set([...SANDBOX_LLM_PARAM_NODE_IDS, ...SANDBOX_IMAGE_GEN_PARAM_NODE_IDS]),
   }
@@ -312,6 +313,7 @@ export default function PipelineWorkflowConfigView({ novelId }: { novelId: strin
   }
   const IMAGE_GEN_PARAM_LABELS: Record<string, string> = { character_portrait: '立绘生成' }
   const SANDBOX_IMAGE_GEN_PARAM_LABELS: Record<string, string> = { scene_image: '场景生图' }
+  const RUNTIME_IMAGE_GEN_PARAM_LABELS: Record<string, string> = { scene_image: '场景生图' }
 
   return (
     // contain-layout gives this box its own containing block for `position: fixed`
@@ -349,6 +351,15 @@ export default function PipelineWorkflowConfigView({ novelId }: { novelId: strin
                   hint="选节点，逐项配置采样参数"
                   selectedNodeId={selectedNodeId}
                   styleGuardNodeIds={new Set(['director'])}
+                  novelId={novelId}
+                />
+              )}
+              {tab === 'runtime' && (
+                <ImageGenNodeParamsPanel
+                  nodeIds={RUNTIME_IMAGE_GEN_PARAM_NODE_IDS}
+                  labels={RUNTIME_IMAGE_GEN_PARAM_LABELS}
+                  configKey="llm_params"
+                  selectedNodeId={selectedNodeId}
                   novelId={novelId}
                 />
               )}

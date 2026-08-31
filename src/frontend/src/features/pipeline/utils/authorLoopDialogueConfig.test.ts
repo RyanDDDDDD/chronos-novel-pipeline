@@ -314,4 +314,13 @@ describe('authorLoopDialogueConfig', () => {
 
     expect(result.config.import_llm_params.character_portrait?.model_ref).toBe('img-1')
   })
+
+  it('keeps llm_params.scene_image.model_ref', () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+      json: async () => ({ config: { llm_params: { scene_image: { model_ref: 'nai-1' } } } }),
+    } as Response))
+    return fetchDialogueConfig('default').then(state => {
+      expect(state.config.llm_params.scene_image).toEqual({ model_ref: 'nai-1' })
+    })
+  })
 })

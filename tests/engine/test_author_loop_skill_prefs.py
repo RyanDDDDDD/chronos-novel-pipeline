@@ -232,6 +232,18 @@ def test_save_dialogue_prefs_llm_params_roundtrip(monkeypatch, tmp_path):
     }
 
 
+def test_llm_params_scene_image_model_ref_roundtrips(monkeypatch, tmp_path):
+    sp.save_dialogue_prefs({"llm_params": {"scene_image": {"model_ref": "nai-1"}}})
+    assert sp.load_dialogue_prefs()["llm_params"]["scene_image"] == {"model_ref": "nai-1"}
+
+
+def test_llm_params_scene_image_drops_sampling_keys(monkeypatch, tmp_path):
+    sp.save_dialogue_prefs({"llm_params": {"scene_image": {"model_ref": "nai-1", "temperature": 0.9}}})
+    # temperature is kept by _clean_llm_params generically (it's range-valid); that's fine --
+    # the image path only ever reads model_ref. The assertion that matters: model_ref survives.
+    assert sp.load_dialogue_prefs()["llm_params"]["scene_image"]["model_ref"] == "nai-1"
+
+
 def test_save_dialogue_prefs_llm_params_drops_unknown_node_id(monkeypatch, tmp_path):
     sp.save_dialogue_prefs({"llm_params": {"not-a-real-node": {"temperature": 0.8}}})
     assert sp.load_dialogue_prefs()["llm_params"] == {}

@@ -17,6 +17,10 @@ def clear_author_loop(chapter: int) -> None:
     """Clear the chapter checkpoint (LangGraph thread) + journal (used for "restarting"). Ignore if not present."""
     import os
 
+    # Local, like the checkpoint import below: keeps media out of this module's import graph,
+    # which the REST layer and the dialogue engine both pull in on startup.
+    from media.scene.author_store import clear_author_stage_scene_images
+
     from engine.author_loop.dialogue_mode.chapter_checkpoint import clear_chapter_thread
 
     clear_chapter_thread(author_loop_graph_checkpoint_path(), f"ch{chapter}")
@@ -26,6 +30,10 @@ def clear_author_loop(chapter: int) -> None:
         pass
     except OSError as e:
         logger.warning("[author-loop] 清理 journal 失败 chapter={}：{}", chapter, e)
+
+    # The per-stage scene images are keyed by (chapter, stage_index) in their own sidecar doc, so
+    # a re-run of this chapter would otherwise hang last run's art off the new stages.
+    clear_author_stage_scene_images(chapter)
 
 
 def save_author_loop_chapter(chapter: int) -> str:

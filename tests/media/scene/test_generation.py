@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import contextlib
-
 import pytest
 
 
@@ -20,7 +18,9 @@ def wired(monkeypatch, tmp_path):
     (tmp_path / nid / "chapters").mkdir(parents=True)
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
     monkeypatch.setenv("CHRONOS_ACTIVE_NOVEL", nid)
-    monkeypatch.setattr("utils.paths.use_novel", lambda _id: contextlib.nullcontext())
+    # NB: do NOT patch utils.paths.use_novel -- the real context manager is fine in tests, and
+    # patching it globally leaks into modules that bind `use_novel` at import time during this
+    # test (api.services.message_hub on first import), breaking unrelated later tests.
 
     hub = _Hub()
     monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
@@ -71,8 +71,8 @@ async def test_generate_scene_image_happy_path(wired, monkeypatch):
     hub, calls = wired
     monkeypatch.setattr(
         "media.scene.generation._resolve_scene_image_entry",
-        lambda: {"id": "m1", "provider": "image_gen", "service": "novelai",
-                 "api_key": "k", "model": "nai-diffusion-4-5-full"},
+        lambda config_key: {"id": "m1", "provider": "image_gen", "service": "novelai",
+                            "api_key": "k", "model": "nai-diffusion-4-5-full"},
     )
     from media.scene import generation, store
 
@@ -90,7 +90,7 @@ async def test_generate_scene_image_happy_path(wired, monkeypatch):
 @pytest.mark.asyncio
 async def test_generate_scene_image_no_model_configured(wired, monkeypatch):
     hub, _ = wired
-    monkeypatch.setattr("media.scene.generation._resolve_scene_image_entry", lambda: None)
+    monkeypatch.setattr("media.scene.generation._resolve_scene_image_entry", lambda config_key: None)
     from media.scene import generation
 
     await generation.generate_sandbox_scene_image("n", 3, "b1", "r1")
@@ -103,7 +103,6 @@ async def test_generate_scene_image_round_not_found(monkeypatch, tmp_path):
     (tmp_path / "n" / "chapters").mkdir(parents=True)
     monkeypatch.setenv("CHRONOS_NOVELS_DIR", str(tmp_path))
     monkeypatch.setenv("CHRONOS_ACTIVE_NOVEL", "n")
-    monkeypatch.setattr("utils.paths.use_novel", lambda _id: contextlib.nullcontext())
     hub = _Hub()
     monkeypatch.setattr("api.routes._hub_instance", lambda: hub)
 
@@ -128,7 +127,7 @@ def test_resolve_scene_image_entry_rejects_non_novelai(monkeypatch):
         "domain.model_catalog.load_custom_models",
         lambda: [{"id": "m1", "provider": "image_gen", "service": "novita"}],
     )
-    assert generation._resolve_scene_image_entry() is None
+    assert generation._resolve_scene_image_entry("sandbox_llm_params") is None
 
 
 def test_resolve_scene_image_entry_falls_back_to_sole_novelai_entry(monkeypatch):
@@ -144,7 +143,7 @@ def test_resolve_scene_image_entry_falls_back_to_sole_novelai_entry(monkeypatch)
         "domain.model_catalog.load_custom_models",
         lambda: [{"id": "only", "provider": "image_gen", "service": "novelai"}],
     )
-    assert generation._resolve_scene_image_entry() == {
+    assert generation._resolve_scene_image_entry("sandbox_llm_params") == {
         "id": "only", "provider": "image_gen", "service": "novelai",
     }
 
@@ -163,4 +162,4 @@ def test_resolve_scene_image_entry_no_fallback_when_multiple_entries(monkeypatch
             {"id": "b", "provider": "image_gen", "service": "novelai"},
         ],
     )
-    assert generation._resolve_scene_image_entry() is None
+    assert generation._resolve_scene_image_entry("sandbox_llm_params") is None

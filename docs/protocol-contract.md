@@ -102,7 +102,26 @@
 | `entry` | `true` 表示章初入场态（`index=-1`）；否则为本 beat 推演结果 |
 | `characters` | 各角色微状态卡片行 |
 
-### 2.6 其它出站（journal / 兼容）
+### 2.6 场景生图（侧车，不进 journal）
+
+```json
+{"type": "author_scene_image_started", "novel_id": "default", "chapter": 6, "index": 2}
+```
+
+```json
+{"type": "author_scene_image_done", "novel_id": "default", "chapter": 6, "index": 2, "filename": "6_2-1730000000.png"}
+```
+
+```json
+{"type": "author_scene_image_done", "novel_id": "default", "chapter": 6, "index": 2, "error": "该 stage 无在场角色，无法生图"}
+```
+
+| `type` | 方向 | 说明 |
+|--------|------|------|
+| `author_scene_image_started` | 出 | 某 stage 场景生图开始（侧车，不进 journal） |
+| `author_scene_image_done` | 出 | `{novel_id, chapter, index, filename?}` 或 `{novel_id, chapter, index, error}` |
+
+### 2.7 其它出站（journal / 兼容）
 
 | `type` | 说明 |
 |--------|------|
@@ -121,6 +140,9 @@
 | `GET` | `/api/author-loop/status` | — | 可续跑章节列表 |
 | `GET` | `/api/author-loop/journal?chapter=N` | — | 章级事件日志重放 |
 | `GET/PUT` | `/api/author-loop/dialogue-config` | — | dialogue 模式配置 |
+| `POST` | `/api/author-loop/scene-image` | `{"chapter": N, "index": M}` | 触发某 stage 场景生图 |
+| `GET` | `/api/author-loop/scene-images?chapter=N` | — | `{stage_index: url}` |
+| `GET` | `/api/author-loop/scene-image/{chapter}/{index}/file` | — | PNG |
 
 > classic 路径的 `GET/PUT /api/author-loop/skills` 若仍暴露，仅供遗留 skill 编排 UI；dialogue 热路径不读取。
 

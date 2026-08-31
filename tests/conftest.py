@@ -1,6 +1,32 @@
-"""Shared pytest fixtures for all test packages under tests/."""
+"""Shared fixtures for all test packages under tests/."""
+import os
+import shutil
+
 import _testmon_inmemory
 import pytest
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _ensure_config_json():
+    """utils.config._load sys.exit(1)s when config/config.json is absent, and ~two dozen
+    tests reach it via get_cloud_llm() / real setup-chat execution. Every dev checkout and CI
+    runner has the file (you copy it from the example on setup), but a fresh git worktree
+    does not -- it's gitignored and setup_worktree.py doesn't copy it -- so `pytest tests/`
+    there fails wide (or hangs, when the SystemExit fires off the main thread). Seed it from
+    the committed example; no-op where it already exists."""
+    from utils.paths import CONFIG_EXAMPLE_PATH, CONFIG_PATH
+
+    if os.path.exists(CONFIG_PATH) or not os.path.exists(CONFIG_EXAMPLE_PATH):
+        yield
+        return
+    shutil.copyfile(CONFIG_EXAMPLE_PATH, CONFIG_PATH)
+    try:
+        yield
+    finally:
+        try:
+            os.remove(CONFIG_PATH)
+        except OSError:
+            pass
 
 
 def seed_registry_novel(
