@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
+import { authorSceneImagesKey } from '@/shared/queries/keys'
 
 /** Per-chapter map of `<stageIndex>` -> scene-image URL. Refetched on the
  * `author_scene_image_done` WS event via a listener in shared/store/listeners.ts
  * (same pattern as portrait generation invalidating the cast query). */
 export function useAuthorSceneImages(novelId: string, chapter: number) {
   return useQuery({
-    queryKey: ['author', 'scene-images', novelId, chapter],
+    queryKey: authorSceneImagesKey(novelId, chapter),
     queryFn: async (): Promise<Record<string, string>> => {
       const res = await fetch(`/api/author-loop/scene-images?chapter=${chapter}`)
       const body = await res.json().catch(() => ({}))
