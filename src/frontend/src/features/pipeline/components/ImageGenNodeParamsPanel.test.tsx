@@ -119,6 +119,34 @@ describe('ImageGenNodeParamsPanel', () => {
     })
   })
 
+  it('writes the model_ref into llm_params when configKey says so', async () => {
+    vi.mocked(useImageGenModelRegistry).mockReturnValue({
+      data: { customModels: [{ id: 'nai-1', label: '我的NovelAI', model: 'nai-diffusion-4-5-full' }] },
+    } as never)
+
+    renderWithClient(
+      <ImageGenNodeParamsPanel
+        nodeIds={['scene_image']}
+        labels={{ scene_image: '场景生图' }}
+        configKey="llm_params"
+        selectedNodeId="scene_image"
+        novelId="default"
+      />,
+      { seedDialogueConfig: true },
+    )
+
+    const input = await screen.findByLabelText('场景生图-model-ref')
+    const group = input.closest('[data-slot="input-group"]') as HTMLElement
+    fireEvent.click(within(group).getAllByRole('button')[0])
+    fireEvent.click(await screen.findByRole('option', { name: '我的NovelAI' }))
+
+    await waitFor(() => {
+      expect(putDialogueConfig).toHaveBeenCalledWith('default', {
+        dialogue: { llm_params: { scene_image: { model_ref: 'nai-1' } } },
+      })
+    })
+  })
+
   it('returns null when the selected node is not in nodeIds', () => {
     vi.mocked(useImageGenModelRegistry).mockReturnValue({ data: { customModels: [] } } as never)
     const { container } = renderWithClient(

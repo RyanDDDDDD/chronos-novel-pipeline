@@ -17,9 +17,10 @@ interface Props {
   selectedNodeId: string | null
   novelId: string
   /** Which dialogue-config bucket the model_ref binding lives in. `import_llm_params` for the
-   * skeleton tab's 立绘生成 node; `sandbox_llm_params` for the sandbox tab's 场景生图 node. The
-   * shared style-preset / style-prompt / negative-prompt fields below are global either way. */
-  configKey?: 'import_llm_params' | 'sandbox_llm_params'
+   * skeleton tab's 立绘生成 node; `sandbox_llm_params` for the sandbox tab's 场景生图 node;
+   * `llm_params` for the runtime tab's 场景生图 node. The shared style-preset / style-prompt /
+   * negative-prompt fields below are global either way. */
+  configKey?: 'import_llm_params' | 'sandbox_llm_params' | 'llm_params'
 }
 
 export default function ImageGenNodeParamsPanel({

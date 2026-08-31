@@ -1,4 +1,4 @@
-export type LlmParamNodeId = 'director' | 'review' | 'state_derive'
+export type LlmParamNodeId = 'director' | 'review' | 'state_derive' | 'scene_image'
 export type SandboxLlmParamNodeId =
   'prose' | 'derive_char' | 'derive_scene' | 'summary_fold' | 'event_extract' | 'profile_mutate' | 'suggest'
   | 'dialogue_draft' | 'identify_cast' | 'selection_rewrite' | 'scene_image'
@@ -20,7 +20,7 @@ export type LlmNodeParams = Partial<Record<LlmParamKey, number>> & {
   concurrent?: boolean
 }
 
-const LLM_PARAM_NODE_IDS: LlmParamNodeId[] = ['director', 'review', 'state_derive']
+const LLM_PARAM_NODE_IDS: LlmParamNodeId[] = ['director', 'review', 'state_derive', 'scene_image']
 const SANDBOX_LLM_PARAM_NODE_IDS: SandboxLlmParamNodeId[] =
   ['prose', 'derive_char', 'derive_scene', 'summary_fold', 'event_extract', 'profile_mutate', 'suggest', 'dialogue_draft', 'identify_cast', 'selection_rewrite', 'scene_image']
 const IMPORT_LLM_PARAM_NODE_IDS: ImportLlmParamNodeId[] =

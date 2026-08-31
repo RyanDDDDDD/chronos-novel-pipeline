@@ -51,9 +51,11 @@ export const DIALOGUE_LOOP_STAGES: DialogueStageDef[] = [
   { id: 'director', label: '导演（一次直出定稿正文）', kind: 'agent-config', position: { x: 1 * DIALOGUE_STAGE_X_STEP, y: DIALOGUE_STAGE_AXIS_Y } },
   { id: 'review', label: '正文审核', kind: 'review', reviewGroup: 'runtime', position: { x: 2 * DIALOGUE_STAGE_X_STEP, y: DIALOGUE_STAGE_AXIS_Y } },
   { id: 'state_derive', label: '角色状态推演', kind: 'mechanism', branch: true, position: { x: 2 * DIALOGUE_STAGE_X_STEP, y: DIALOGUE_STAGE_AXIS_Y } },
+  { id: 'scene_image', label: '场景生图（按需触发）', kind: 'mechanism', branch: true, position: { x: 3 * DIALOGUE_STAGE_X_STEP, y: DIALOGUE_STAGE_AXIS_Y } },
 ]
 
 export const DIALOGUE_STAGE_EDGES: DialogueStageEdge[] = [
   { source: 'director', target: 'review' },
   { source: 'review', target: 'state_derive' },
+  { source: 'review', target: 'scene_image', async: true },
 ]
