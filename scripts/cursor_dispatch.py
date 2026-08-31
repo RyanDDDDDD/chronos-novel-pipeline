@@ -90,9 +90,18 @@ _SETUP_INSTRUCTION = (
 )
 
 
+# Commits land under the user's name only -- no agent co-authorship. Cursor's own
+# Co-authored-by trailer is off via ~/.cursor/cli-config.json attribution flags; this
+# line stops the agent adding one by hand (and overrides any stale CLAUDE.md wording).
+_NO_ATTRIBUTION = (
+    " Do NOT add any Co-Authored-By / Co-authored-by / agent-attribution trailer to "
+    "commit messages -- the commit is authored by the user alone."
+)
+
+
 def build_prompt(plan: Path | None, raw_prompt: str | None) -> str:
     if raw_prompt:
-        return _SETUP_INSTRUCTION + raw_prompt
+        return _SETUP_INSTRUCTION + raw_prompt + _NO_ATTRIBUTION
     rel = plan.relative_to(REPO_ROOT) if plan.is_relative_to(REPO_ROOT) else plan  # type: ignore[union-attr]
     return (
         _SETUP_INSTRUCTION +
@@ -101,7 +110,8 @@ def build_prompt(plan: Path | None, raw_prompt: str | None) -> str:
         "sections -- immediately after fully completing each one (before starting the "
         f'next), run `echo "{TASK_MARKER_PREFIX} Task N"` (substituting its number) so '
         "progress can be tracked externally. When finished, commit your changes with a "
-        "Conventional Commits message. Do not push and do not open a pull request."
+        "Conventional Commits message. Do not push and do not open a pull request." +
+        _NO_ATTRIBUTION
     )
 
 
