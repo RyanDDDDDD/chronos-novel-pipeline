@@ -15,6 +15,7 @@ import novelStatusReducer from '@/shared/store/novelStatusSlice'
 import backgroundJobsReducer from '@/shared/store/backgroundJobsSlice'
 import portraitGenerationReducer from '@/shared/store/portraitGenerationSlice'
 import sandboxSceneImageReducer from '@/shared/store/sandboxSceneImageSlice'
+import authorSceneImageReducer from '@/shared/store/authorSceneImageSlice'
 import viewUnreadReducer from '@/shared/store/viewUnreadSlice'
 import cloudAuthReducer from '@/features/services/store/cloudAuthSlice'
 import { listenerMiddleware } from '@/shared/store/listeners'
@@ -87,6 +88,7 @@ export function buildTestStore(preloadedState?: Partial<RootState>) {
       backgroundJobs: backgroundJobsReducer,
       portraitGeneration: portraitGenerationReducer,
       sandboxSceneImage: sandboxSceneImageReducer,
+      authorSceneImage: authorSceneImageReducer,
       viewUnread: viewUnreadReducer,
       cloudAuth: cloudAuthReducer,
     },
