@@ -192,6 +192,14 @@ def sandbox_scene_path(filename: str) -> str:
     return os.path.join(sandbox_scene_dir(), filename)
 
 
+def author_scene_dir() -> str:
+    return os.path.join(active_novel_dir(), "assets", "author_scenes")
+
+
+def author_scene_path(filename: str) -> str:
+    return os.path.join(author_scene_dir(), filename)
+
+
 def plot_library_path() -> str:
     return os.path.join(active_novel_dir(), "plot", "plot_library.json")
 
