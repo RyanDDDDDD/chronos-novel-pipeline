@@ -39,3 +39,7 @@ export const sandboxMemoryArchiveKey = (novelId: string, chapter: number, branch
   ['sandbox-memory-archive', novelId, chapter, branchId] as const
 export const novitaModelCatalogKey = ['novita-model-catalog'] as const
 export const artStylePresetsKey = ['art-style-presets'] as const
+// Prefix-only key so the WS listener can invalidate every novelId/chapter variant at once.
+export const authorSceneImagesPrefixKey = ['author', 'scene-images'] as const
+export const authorSceneImagesKey = (novelId: string, chapter: number) =>
+  [...authorSceneImagesPrefixKey, novelId, chapter] as const

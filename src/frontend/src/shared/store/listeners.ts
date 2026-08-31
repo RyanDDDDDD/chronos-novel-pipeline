@@ -12,7 +12,7 @@ import { syncAuthorLoopForChapter } from '@/features/author/store/authorLoopSlic
 import { setChapter } from '@/shared/store/uiSlice'
 import { loadNovelStatusSnapshot } from '@/shared/queries/novelStatusSnapshot'
 import { queryClient } from '@/shared/lib/queryClient'
-import { novitaModelCatalogKey } from '@/shared/queries/keys'
+import { novitaModelCatalogKey, authorSceneImagesPrefixKey } from '@/shared/queries/keys'
 import { cloudAuthErrorMessage } from '@/features/services/cloudAuthErrors'
 
 // No event received within this long while running -> soft "suspected stuck" alarm (status
@@ -189,7 +189,7 @@ startListening({
   effect: (action) => {
     if (action.payload.type !== 'author_scene_image_done') return
     if (action.payload.error) return
-    void queryClient.invalidateQueries({ queryKey: ['author', 'scene-images'] })
+    void queryClient.invalidateQueries({ queryKey: authorSceneImagesPrefixKey })
   },
 })
 
