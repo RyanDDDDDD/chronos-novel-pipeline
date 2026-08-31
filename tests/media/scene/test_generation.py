@@ -71,8 +71,8 @@ async def test_generate_scene_image_happy_path(wired, monkeypatch):
     hub, calls = wired
     monkeypatch.setattr(
         "media.scene.generation._resolve_scene_image_entry",
-        lambda: {"id": "m1", "provider": "image_gen", "service": "novelai",
-                 "api_key": "k", "model": "nai-diffusion-4-5-full"},
+        lambda config_key: {"id": "m1", "provider": "image_gen", "service": "novelai",
+                            "api_key": "k", "model": "nai-diffusion-4-5-full"},
     )
     from media.scene import generation, store
 
@@ -90,7 +90,7 @@ async def test_generate_scene_image_happy_path(wired, monkeypatch):
 @pytest.mark.asyncio
 async def test_generate_scene_image_no_model_configured(wired, monkeypatch):
     hub, _ = wired
-    monkeypatch.setattr("media.scene.generation._resolve_scene_image_entry", lambda: None)
+    monkeypatch.setattr("media.scene.generation._resolve_scene_image_entry", lambda config_key: None)
     from media.scene import generation
 
     await generation.generate_sandbox_scene_image("n", 3, "b1", "r1")
@@ -128,7 +128,7 @@ def test_resolve_scene_image_entry_rejects_non_novelai(monkeypatch):
         "domain.model_catalog.load_custom_models",
         lambda: [{"id": "m1", "provider": "image_gen", "service": "novita"}],
     )
-    assert generation._resolve_scene_image_entry() is None
+    assert generation._resolve_scene_image_entry("sandbox_llm_params") is None
 
 
 def test_resolve_scene_image_entry_falls_back_to_sole_novelai_entry(monkeypatch):
@@ -144,7 +144,7 @@ def test_resolve_scene_image_entry_falls_back_to_sole_novelai_entry(monkeypatch)
         "domain.model_catalog.load_custom_models",
         lambda: [{"id": "only", "provider": "image_gen", "service": "novelai"}],
     )
-    assert generation._resolve_scene_image_entry() == {
+    assert generation._resolve_scene_image_entry("sandbox_llm_params") == {
         "id": "only", "provider": "image_gen", "service": "novelai",
     }
 
@@ -163,4 +163,4 @@ def test_resolve_scene_image_entry_no_fallback_when_multiple_entries(monkeypatch
             {"id": "b", "provider": "image_gen", "service": "novelai"},
         ],
     )
-    assert generation._resolve_scene_image_entry() is None
+    assert generation._resolve_scene_image_entry("sandbox_llm_params") is None
