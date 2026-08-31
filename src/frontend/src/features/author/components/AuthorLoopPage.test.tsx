@@ -484,6 +484,14 @@ describe('AuthorLoopPage 场景生图', () => {
     expect(screen.queryByRole('button', { name: /生图/ })).toBeNull()
   })
 
+  it('does not render a scene-image row when the synthesis prose renders empty', () => {
+    renderPage({
+      status: 'done', chapter: 2, total: 1,
+      messages: [{ id: 'seg-0', role: 'agent', type: 'segment', segment: { index: 0, intent: '', skill: null, text: '# 合成正文\n   \n', agent: 'synthesis' } }],
+    })
+    expect(screen.queryByRole('button', { name: /生图/ })).toBeNull()
+  })
+
   it('shows the existing image when the map has this stage index', () => {
     useAuthorSceneImagesMock.mockReturnValue({ data: { '0': '/api/author-loop/scene-image/6/0/file?v=x' } })
     renderPage({
@@ -521,5 +529,15 @@ describe('AuthorLoopPage 场景生图', () => {
     store.dispatch(wsEventReceived({ type: 'author_scene_image_done', novel_id: 'default', chapter: 2, index: 0, error: '未配置模型' }))
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('场景生图失败：未配置模型'))
     expect(store.getState().authorSceneImage.lastFailure).toBeNull()
+  })
+
+  it('does not toast a failure belonging to a chapter the page is not showing', async () => {
+    const { store } = renderLoopHarness({
+      status: 'done', chapter: 2, total: 1,
+      messages: [segMsg(0, '正文内容。')],
+    })
+    store.dispatch(wsEventReceived({ type: 'author_scene_image_done', novel_id: 'default', chapter: 9, index: 0, error: '未配置模型' }))
+    await waitFor(() => expect(store.getState().authorSceneImage.lastFailure).toBeNull())
+    expect(toastErrorMock).not.toHaveBeenCalled()
   })
 })

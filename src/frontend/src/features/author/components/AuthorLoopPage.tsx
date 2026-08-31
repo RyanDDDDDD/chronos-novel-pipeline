@@ -245,7 +245,9 @@ function SegmentBubble({ seg, chapter, sceneImageUrl, onGenerateSceneImage }: {
           )}
         </>
       )}
-      {seg.agent === 'synthesis' && seg.text.trim() && onGenerateSceneImage && (
+      {/* bodyText, not seg.text -- a stage whose prose strips down to whitespace has nothing
+          to draw, and the bubble already renders it as （空）. */}
+      {isSynthesis && bodyText.trim() && onGenerateSceneImage && (
         <AuthorSceneImageRow
           chapter={chapter ?? 0}
           index={seg.index}
@@ -273,9 +275,12 @@ export default function AuthorLoopPage() {
   const sceneFailure = useSelector(selectAuthorSceneImageLastFailure)
   useEffect(() => {
     if (!sceneFailure) return
-    toastError(`场景生图失败：${sceneFailure.error}`)
+    // Always consume, so a failure from a chapter we're not showing can't surface as a stale
+    // toast later; only the viewed chapter's failure is worth interrupting the user for (the
+    // row itself keeps the inline red hint either way).
+    if (sceneFailure.chapter === chapter) toastError(`场景生图失败：${sceneFailure.error}`)
     dispatch(authorSceneImageFailureConsumed())
-  }, [sceneFailure, dispatch, toastError])
+  }, [sceneFailure, chapter, dispatch, toastError])
   const handleGenerateScene = (index: number) => {
     void requestAuthorSceneImage(chapter, index).then((res) => {
       if (!res.ok) toastError('场景生图请求失败，请重试')

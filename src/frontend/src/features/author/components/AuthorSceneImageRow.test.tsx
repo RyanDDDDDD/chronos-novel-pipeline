@@ -29,6 +29,19 @@ describe('AuthorSceneImageRow', () => {
     expect(screen.getByRole('button', { name: /重新生成/ })).toBeTruthy()
   })
 
+  it('shows the retry hint when a regenerate of an existing image failed', () => {
+    render(<Provider store={store({ authorSceneImage: { byKey: { '6:2': 'failed' }, lastFailure: null } })}>
+      <AuthorSceneImageRow chapter={6} index={2} imageUrl="/x.png" onGenerate={() => {}} /></Provider>)
+    expect(screen.getByRole('img')).toBeTruthy()
+    expect(screen.getByText('场景生图失败，可重试')).toBeTruthy()
+  })
+
+  it('shows the retry hint when a first generate failed', () => {
+    render(<Provider store={store({ authorSceneImage: { byKey: { '6:2': 'failed' }, lastFailure: null } })}>
+      <AuthorSceneImageRow chapter={6} index={2} onGenerate={() => {}} /></Provider>)
+    expect(screen.getByText('场景生图失败，可重试')).toBeTruthy()
+  })
+
   it('shows 生图中… + disables button while generating', () => {
     render(<Provider store={store({ authorSceneImage: { byKey: { '6:2': 'generating' }, lastFailure: null } })}>
       <AuthorSceneImageRow chapter={6} index={2} onGenerate={() => {}} /></Provider>)

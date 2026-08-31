@@ -21,6 +21,9 @@ export default function AuthorSceneImageRow({
   )
   const generating = status === 'generating'
   const failed = status === 'failed'
+  const failureHint = failed
+    ? <p className="text-[11px] text-red-500">场景生图失败，可重试</p>
+    : null
 
   if (imageUrl) {
     return (
@@ -43,6 +46,7 @@ export default function AuthorSceneImageRow({
             : <RefreshCw aria-hidden />}
           {generating ? '生图中…' : '重新生成'}
         </Button>
+        {failureHint}
       </div>
     )
   }
@@ -61,9 +65,7 @@ export default function AuthorSceneImageRow({
           : <ImageIcon aria-hidden />}
         {generating ? '生图中…' : '生图'}
       </Button>
-      {failed && (
-        <p className="text-[11px] text-red-500">场景生图失败，可重试</p>
-      )}
+      {failureHint}
     </div>
   )
 }

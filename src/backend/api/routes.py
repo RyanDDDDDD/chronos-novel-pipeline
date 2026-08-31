@@ -988,11 +988,39 @@ Receive a user message and run a setting dialog; the output is broadcast via ws.
 
     @app.post("/api/author-loop/scene-image")
     async def author_loop_scene_image_endpoint(body: dict):
+        """`body: dict` lets FastAPI reject a non-object payload with its own 422; the manual
+        coercion below mirrors /api/author-loop/start so a junk chapter/index is a 400 instead
+        of a 500 from int(), and never reaches the scheduler as chapter 0."""
+        from fastapi import Response
         from media.scene.author import schedule_author_stage_scene_image
 
         b = body or {}
-        schedule_author_stage_scene_image(int(b.get("chapter", 0)), int(b.get("index", 0)))
-        return {"ok": True}
+
+        def _int_or_none(raw: object) -> int | None:
+            """Absent/null falls back to the field default, like /api/author-loop/start does;
+            None back means "present but not a number" -- a caller error, not a 500."""
+            if raw is None:
+                return 0
+            if not isinstance(raw, int | float | str):
+                return None
+            try:
+                return int(raw)
+            except (ValueError, OverflowError):
+                return None
+
+        chapter = _int_or_none(b.get("chapter"))
+        index = _int_or_none(b.get("index"))
+        if chapter is None or chapter < 1:
+            error = "chapter 须 ≥ 1"
+        elif index is None or index < 0:
+            error = "index 须 ≥ 0"
+        else:
+            schedule_author_stage_scene_image(chapter, index)
+            return {"ok": True}
+        return Response(
+            content=json.dumps({"ok": False, "error": error}, ensure_ascii=False),
+            status_code=400, media_type="application/json",
+        )
 
     @app.get("/api/author-loop/scene-images")
     async def author_loop_scene_images_endpoint(chapter: int) -> dict:

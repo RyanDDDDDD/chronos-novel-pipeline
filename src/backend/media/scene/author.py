@@ -30,6 +30,7 @@ _NO_MODEL_MSG = (
     "未配置场景生图模型（需 NovelAI V4.5）：先在「服务」页加一个 NovelAI 生图模型，"
     "再到「流水线 → 对话」画布点「场景生图」节点绑定"
 )
+_NO_CHARACTERS_MSG = "该 stage 无在场角色，无法生图"
 
 
 def schedule_author_stage_scene_image(chapter: int, stage_index: int) -> None:
@@ -59,7 +60,8 @@ def _stage_memory_entry(chapter: int, stage_index: int) -> dict | None:
     """Pull the scene anchor for one finalized stage from the chapter journal: prefer the last
     author_loop_event_log entry for this stage (summary/time/location/characters); fall back to
     the author_loop_state present-characters when the stage finalized with no extracted events.
-    None -> stage not finalized / chapter reset / no present characters."""
+    None -> stage not finalized / chapter reset. An existing stage with an empty cast still
+    returns its entry (characters == []) so the caller can report that distinctly."""
     from engine.author_loop.journal import load_events
     from utils.paths import author_loop_journal_path
 
@@ -75,16 +77,14 @@ def _stage_memory_entry(chapter: int, stage_index: int) -> dict | None:
     if entries:
         e = entries[-1]
         names = [str(n) for n in (e.get("characters") or [])]
-        mem = {
+        return {
             "summary": e.get("summary") or "", "time": e.get("time") or "",
             "location": e.get("location") or "", "characters": names,
         }
-    else:
-        rows = (st[-1].get("characters") or []) if st else []
-        names = [str(r.get("name")) for r in rows if isinstance(r, dict) and r.get("name")]
-        mem = {"summary": "", "time": "", "location": "", "characters": names}
 
-    return mem if names else None
+    rows = (st[-1].get("characters") or []) if st else []
+    names = [str(r.get("name")) for r in rows if isinstance(r, dict) and r.get("name")]
+    return {"summary": "", "time": "", "location": "", "characters": names}
 
 
 async def generate_author_stage_scene_image(
@@ -104,13 +104,18 @@ async def generate_author_stage_scene_image(
                                      "error": "找不到该 stage 的定稿记录，可能已重置"})
                 return
 
+            names = mem["characters"]
+            if not names:
+                await hub.broadcast({"type": "author_scene_image_done", **base_event,
+                                     "error": _NO_CHARACTERS_MSG})
+                return
+
             entry = _resolve_scene_image_entry(_CONFIG_KEY)
             if entry is None:
                 await hub.broadcast({"type": "author_scene_image_done", **base_event,
                                      "error": _NO_MODEL_MSG})
                 return
 
-            names = mem["characters"]
             visual_tags = _character_visual_tags(names)
             portrait_bytes = _character_portrait_bytes(names)
 
